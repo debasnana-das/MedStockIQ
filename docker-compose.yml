@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: medstockiq
+      POSTGRES_USER: medstockiq
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-dev-only-change-me}
+    ports:
+      - "5432:5432"
+    volumes:
+      - medstockiq_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U medstockiq -d medstockiq"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  medstockiq_pgdata:
