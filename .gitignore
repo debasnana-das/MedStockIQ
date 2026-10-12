@@ -28,12 +28,15 @@ build/
 .DS_Store
 Thumbs.db
 
-# Private business data and uploaded files - never commit these
+# Local business data, uploaded files, and generated datasets - never commit these
+/data/
+/real_data/
+/customer_data/
+/uploads/
+/private_data/
 data/raw/
 data/private/
 data/uploads/
-uploads/
-private_data/
 *.sqlite
 *.sqlite3
 *.db
