@@ -29,7 +29,7 @@ build/
 Thumbs.db
 
 # Private business data and uploaded files - never commit these
- data/raw/
+data/raw/
 data/private/
 data/uploads/
 uploads/
