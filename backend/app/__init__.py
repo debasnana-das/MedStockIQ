@@ -1,0 +1,1 @@
+"""MedStockIQ API application."""
