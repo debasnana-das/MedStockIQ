@@ -172,7 +172,6 @@ def calculate_inventory_arithmetic(
             by_date[row["snapshot_date"]].append(row)
         history = []
         latest_date = max(by_date)
-        latest_group = by_date[latest_date]
         for day in sorted(by_date):
             same_day = by_date[day]
             distinct_quantities = {row["quantity_on_hand"] for row in same_day}
