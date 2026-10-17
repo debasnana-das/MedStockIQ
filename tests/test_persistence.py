@@ -190,6 +190,12 @@ def test_persist_and_read_normalization_run_with_organization_scope(database_eng
         "engine_version": "1.0.0",
         "overall_status": "insufficient_data",
         "analysis_readiness": {"demand_forecasting": {"status": "insufficient_data"}},
+        "inventory_analysis": {
+            "engine_version": "1.0.0",
+            "status": "ready_with_warnings",
+            "summary": {"expiry_alert_count": 1},
+            "expiry_alerts": [{"alert_type": "expires_within_30_days", "batch_code": "B001"}],
+        },
     }
     with Session(database_engine) as session:
         run_id = persist_normalization_result(
@@ -215,6 +221,8 @@ def test_persist_and_read_normalization_run_with_organization_scope(database_eng
     assert preview["transformations_preview"][0]["rule"] == "split_quantity_and_free"
     assert preview["quality_report"]["engine_version"] == "1.0.0"
     assert preview["quality_report"]["analysis_readiness"]["demand_forecasting"]["status"] == "insufficient_data"
+    assert preview["quality_report"]["inventory_analysis"]["summary"]["expiry_alert_count"] == 1
+    assert preview["quality_report"]["inventory_analysis"]["expiry_alerts"][0]["batch_code"] == "B001"
     assert forbidden is None
 
 

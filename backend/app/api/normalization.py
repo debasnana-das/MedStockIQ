@@ -17,6 +17,7 @@ from app.db.models import Organization, OrganizationMembership
 from app.db.persistence import get_persisted_normalization_preview, persist_normalization_result
 from app.db.session import get_db_session
 from app.ingestion.readers import read_tabular_content
+from app.inventory.arithmetic import calculate_inventory_arithmetic
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
 from app.quality.readiness import evaluate_data_quality_and_readiness
 from app.schema.confirmation import SchemaConfirmationRequest
@@ -127,6 +128,10 @@ async def normalize_uploaded_file(
         result,
         document_type=options.document_type,
         confirmed_schema=confirmed_schema,
+    )
+    result["quality_report"]["inventory_analysis"] = calculate_inventory_arithmetic(
+        result,
+        currency_code=options.currency_code,
     )
 
     if persist:
