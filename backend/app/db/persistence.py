@@ -73,6 +73,7 @@ def persist_normalization_result(
                 confirmed_schema_json=confirmed_schema.model_dump(mode="json"),
                 options_json=options.model_dump(mode="json"),
                 summary_json=dict(result.get("summary", {})),
+                quality_report_json=result.get("quality_report"),
             )
         )
         session.flush()
@@ -279,6 +280,7 @@ def get_persisted_normalization_preview(
         "normalization_status": run.normalization_status, "persistence": "saved_to_postgresql",
         "created_at": run.created_at.isoformat() if run.created_at else None,
         "summary": run.summary_json,
+        "quality_report": run.quality_report_json,
         "previews": {
             "products": [_product_json(row) for row in products],
             "batches": [_batch_json(row) for row in batches],

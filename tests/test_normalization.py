@@ -199,6 +199,9 @@ def test_normalize_endpoint_returns_preview_and_does_not_claim_persistence(clien
     assert body["summary"]["transaction_count"] == 1
     assert body["persistence"] == "stateless_not_saved"
     assert body["previews"]["transactions"][0]["effective_quantity"] == 12
+    assert body["quality_report"]["engine_version"] == "1.0.0"
+    assert "analysis_readiness" in body["quality_report"]
+    assert body["quality_report"]["analysis_readiness"]["demand_forecasting"]["status"] == "insufficient_data"
 
 
 

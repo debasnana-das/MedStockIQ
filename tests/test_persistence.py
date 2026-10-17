@@ -185,9 +185,15 @@ def _full_result(organization_id: str = "ORG-PERSIST-TEST") -> dict:
 
 
 def test_persist_and_read_normalization_run_with_organization_scope(database_engine) -> None:
+    result = _full_result()
+    result["quality_report"] = {
+        "engine_version": "1.0.0",
+        "overall_status": "insufficient_data",
+        "analysis_readiness": {"demand_forecasting": {"status": "insufficient_data"}},
+    }
     with Session(database_engine) as session:
         run_id = persist_normalization_result(
-            session, _full_result(), _schema(), _options(), "synthetic.csv", "csv", 512
+            session, result, _schema(), _options(), "synthetic.csv", "csv", 512
         )
 
     with Session(database_engine) as session:
@@ -207,6 +213,8 @@ def test_persist_and_read_normalization_run_with_organization_scope(database_eng
     assert preview["previews"]["inventory_snapshots"][0]["quantity_on_hand"] == 18.0
     assert preview["issues_preview"][0]["code"] == "example_data_quality_warning"
     assert preview["transformations_preview"][0]["rule"] == "split_quantity_and_free"
+    assert preview["quality_report"]["engine_version"] == "1.0.0"
+    assert preview["quality_report"]["analysis_readiness"]["demand_forecasting"]["status"] == "insufficient_data"
     assert forbidden is None
 
 

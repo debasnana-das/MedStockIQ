@@ -29,6 +29,7 @@ class NormalizationRun(Base):
     confirmed_schema_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     options_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
     summary_json: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False)
+    quality_report_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

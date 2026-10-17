@@ -18,6 +18,7 @@ from app.db.persistence import get_persisted_normalization_preview, persist_norm
 from app.db.session import get_db_session
 from app.ingestion.readers import read_tabular_content
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
+from app.quality.readiness import evaluate_data_quality_and_readiness
 from app.schema.confirmation import SchemaConfirmationRequest
 from app.security import AuthenticatedUser, get_current_principal
 
@@ -121,6 +122,12 @@ async def normalize_uploaded_file(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    result["quality_report"] = evaluate_data_quality_and_readiness(
+        result,
+        document_type=options.document_type,
+        confirmed_schema=confirmed_schema,
+    )
 
     if persist:
         try:
