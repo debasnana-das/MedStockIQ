@@ -244,6 +244,7 @@ def test_normalize_endpoint_can_persist_and_retrieve_a_run(
             display_name="API Test Organization",
             is_active=True,
         ))
+        session.flush()  # Ensure both FK parent rows exist before the membership insert.
         session.add(OrganizationMembership(
             organization_id="ORG-API-TEST",
             user_id=user_id,
