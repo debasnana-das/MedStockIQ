@@ -73,3 +73,8 @@ See [Data Contract v1](docs/data_contract_v1.md) for the canonical schema.
 ## PostgreSQL persistence workflow
 
 Normalization stays preview-only by default. Requests require a bearer token. Submit `persist=true` and an organization ID in `options_json` only for an organization where the authenticated user has a writer role; the server checks membership rather than trusting the ID. Saves are transactional and uploaded file bytes are not stored. Run `docker compose up -d postgres` and `alembic upgrade head` for local setup. Saved previews are available through `GET /api/v1/normalization-runs/{run_id}?organization_id=...`, after the server verifies tenant membership. This is an early-stage security layer, not production certification; use synthetic or sanitized data and do not expose the API publicly.
+
+
+## Data quality and analysis readiness
+
+Normalization responses include a deterministic `quality_report` with grouped quality findings, key-field coverage, and independent readiness statuses for expiry monitoring, demand forecasting, overstock review, and stock-out review. It is persisted alongside saved normalization runs. The readiness layer reports missing evidence rather than guessing: invoices alone are not treated as retail sell-through or current stock, and stock-out analysis remains blocked until replenishment timing data is available. This step assesses readiness only; it does not yet calculate inventory risk or forecast demand. See [API and readiness details](docs/profiling_api.md).

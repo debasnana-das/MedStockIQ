@@ -73,3 +73,17 @@ Returns bounded previews for a saved run only after the request's bearer token i
 Passwords are hashed with Argon2. Signed access tokens expire after 30 minutes, and each protected request checks that the underlying account still exists and is active. The database stores organization memberships and roles; write and read routes enforce those memberships on the server. Registration does not grant membership, and only an existing tenant owner/admin can add a registered account.
 
 This is a security baseline for controlled development, not a production identity service. Rate limiting, MFA, account recovery, token refresh, dedicated secret management, detailed audit logging, deployment/proxy hardening, data retention/deletion workflows, and an independent security review remain outstanding. Normalization persists only when explicitly requested. Original file bytes are not stored by this workflow. Invalid/missing values are reported as issues rather than silently imputed. No inventory-risk calculations, forecasts, or recommendations are run by this endpoint.
+
+
+## 7. Data quality and analysis readiness
+
+Each normalization response includes a deterministic `quality_report`. The same report is saved with a normalization run and returned when that saved run is retrieved. The report separates grouped findings from module readiness.
+
+- `quality_findings` carries forward normalization issues and adds checks for missing product names/expiry, missing quantity units, unknown stock basis, possible duplicate transaction signatures, suspicious discount/tax rates, negative prices, and ignored source columns. Possible duplicates are flagged for review, never automatically removed.
+- `field_coverage` reports counts and percentages for important canonical fields.
+- `analysis_readiness` gives each module a `ready`, `ready_with_warnings`, or `insufficient_data` status, required inputs, available-input counts, blockers, and warnings.
+- `overall_status` describes whether any supported analysis path has enough inputs to proceed. It is not a risk score, a forecast, or a guarantee of statistical reliability.
+
+Current modules: expiry monitoring, demand forecasting, overstock review, and stock-out review. Demand readiness requires at least 10 dated retail-sale lines, 7 distinct sale dates, at least 28 days between the first and last sale, and one consistent quantity unit per product. These are conservative engineering guardrails, not a statistical sufficiency claim. Expiry monitoring needs a normalized batch expiry and a dated on-hand snapshot linked to the same batch. Overstock review additionally needs comparable dated retail-sale quantities and stock units. Stock-out review is blocked until confirmed replenishment timing evidence is available; the current normalization ingestion does not yet create replenishment-order records.
+
+A purchase invoice alone is not treated as verified sell-through or current inventory. The quality engine does not infer missing values, calculate inventory risks, reconcile monetary amounts when the source's tax/amount semantics are unconfirmed, or automatically deduplicate rows.

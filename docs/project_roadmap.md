@@ -30,8 +30,9 @@
 - [ ] Add rate limiting, MFA/account recovery, token refresh/revocation strategy, audit logging, retention controls, and deployment security before production.
 
 ## Phase 3 — Data quality and deterministic analysis
-- [ ] Implement date, quantity, unit, duplicate and monetary validation.
-- [ ] Implement data-readiness checks for each risk module.
+- [x] Add deterministic findings from normalization issues, key-field coverage, possible duplicates, ignored columns, unknown stock basis, and suspicious tax/discount values.
+- [x] Implement per-module readiness checks with explicit blockers and transparent sales-history guardrails.
+- [ ] Expand date, unit and cross-document consistency rules as more source formats and authorized sanitized files become available.
 - [ ] Implement inventory arithmetic and basic expiry-date alerts.
 - [ ] Return explicit insufficient_data statuses where appropriate.
 
