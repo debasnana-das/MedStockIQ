@@ -96,7 +96,7 @@ def _demand(spec: ProductSpec, day: date, rng: random.Random) -> int:
         elif day.month in {6, 7, 8}:
             multiplier = 0.8
     mean = spec.mean_demand * multiplier
-    return max(0, int(round(rng.gauss(mean, max(0.5, math.sqrt(mean) * 0.55)))))
+    return max(0, round(rng.gauss(mean, max(0.5, math.sqrt(mean) * 0.55))))
 
 
 def _receipts(spec: ProductSpec, start: date, as_of: date) -> list[dict[str, Any]]:
@@ -120,7 +120,7 @@ def _receipts(spec: ProductSpec, start: date, as_of: date) -> list[dict[str, Any
         lead = 3 + (receipt_date.day % 4)
         events.append({
             "date": receipt_date,
-            "quantity": max(10, int(math.ceil(spec.mean_demand * 30))),
+            "quantity": max(10, math.ceil(spec.mean_demand * 30)),
             "expiry": _expiry_after(receipt_date, 540),
             "lead_time": lead,
             "supplier": supplier_id,
@@ -237,7 +237,7 @@ def generate_dataset(
             "notes": expected[1],
         })
 
-        opening_qty = 20 if spec.scenario == "overstock_risk" else 12 if spec.scenario == "expiry_risk" else max(15, int(math.ceil(spec.mean_demand * 30)))
+        opening_qty = 20 if spec.scenario == "overstock_risk" else 12 if spec.scenario == "expiry_risk" else max(15, math.ceil(spec.mean_demand * 30))
         opening_batch = add_batch(spec, start, _expiry_after(as_of_date, 600), opening_qty)
         add_transaction(spec, opening_batch, start, "opening_balance", opening_qty)
 
