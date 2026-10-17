@@ -649,7 +649,7 @@ def normalize_dataframe(
             document_date = options.document_date.isoformat()
 
         transaction_records: list[tuple[str, float, ColumnMappingChoice | None]] = []
-        if quantity_mapping and quantity_value is not None and not quantity_units_conflict:
+        if quantity_mapping and quantity_value is not None:
             transaction_records.append(
                 (quantity_mapping.transaction_type or "unknown", quantity_value, quantity_mapping)
             )

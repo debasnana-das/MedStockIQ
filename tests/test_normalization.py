@@ -323,7 +323,11 @@ def test_quantity_and_free_quantity_with_different_units_are_not_added() -> None
     })
     frame = pd.DataFrame([["Synthetic A", "B001", 10, 2]], columns=["PRODUCT", "BATCH", "QTY", "FREE"])
     result = normalize_dataframe(frame, schema, NormalizationOptions(document_type="purchase_invoice"))
-    assert result["summary"]["transaction_count"] == 0
+    assert result["summary"]["transaction_count"] == 1
+    transaction = result["tables"]["transactions"][0]
+    assert transaction["quantity"] == 10
+    assert transaction["free_quantity"] == 2
+    assert transaction["effective_quantity"] is None
     assert any(issue["code"] == "conflicting_free_quantity_units" for issue in result["issues"])
 
 
