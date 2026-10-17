@@ -49,7 +49,7 @@ The response returns counts and up to 10 preview records per canonical table, pl
 - `transactions`
 - `inventory_snapshots`
 
-The normalizer creates internal IDs, links transaction/batch/product/document records, preserves raw expiry text, uses only confirmed quantity/date semantics, and reports invalid values and conflicts. It does not guess product equivalence across external files. Product matching is limited to source product codes or a conservative exact attribute key within the current upload.
+The normalizer creates internal IDs, links transaction/batch/product/document records, preserves raw expiry text, uses only confirmed quantity/date semantics, and reports invalid values and conflicts. It rejects ambiguous comma-decimal formats, preserves month precision for Excel expiry cells formatted as month/year, does not link a row to a batch after an expiry conflict, does not calculate effective quantity when free quantity is invalid/missing or uses a different unit, and requires an explicit snapshot date for inventory snapshots. It does not guess product equivalence across external files. Product matching is limited to source product codes or a conservative exact attribute key within the current upload.
 
 For invoice types `purchase_invoice` and `outward_invoice`, a confirmed document date is used as transaction date when no transaction date was mapped; this is recorded in the transformation list. Other document types do not receive this fallback.
 

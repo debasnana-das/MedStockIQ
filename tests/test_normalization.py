@@ -1,9 +1,11 @@
+from datetime import date
+
 import pandas as pd
 import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
+from app.normalization.normalizer import NormalizationOptions, normalize_dataframe, _parse_number
 from app.schema.confirmation import SchemaConfirmationRequest
 
 client = TestClient(app)
@@ -202,3 +204,138 @@ def test_normalize_endpoint_returns_preview_and_does_not_claim_persistence() -> 
     assert body["summary"]["transaction_count"] == 1
     assert body["persistence"] == "stateless_not_saved"
     assert body["previews"]["transactions"][0]["effective_quantity"] == 12
+
+
+
+def test_numeric_parser_accepts_standard_western_and_indian_grouping() -> None:
+    assert _parse_number("1,234.50") == 1234.5
+    assert _parse_number("1,23,456.78") == 123456.78
+
+
+def test_numeric_parser_rejects_ambiguous_comma_decimal() -> None:
+    with pytest.raises(ValueError, match="ambiguous or invalid comma grouping"):
+        _parse_number("1,5")
+
+
+def test_month_year_expiry_in_excel_datetime_keeps_month_precision() -> None:
+    frame = pd.DataFrame(
+        [["Synthetic A", "Maker A", 300490, "10'S", "B001", pd.Timestamp("2030-03-01"), "10+2", "25.5", "40", "13/10/2026", "INV-001"]],
+        columns=[c.source_column for c in _confirmed_schema().profiled_columns],
+    )
+    result = normalize_dataframe(
+        frame, _confirmed_schema(), NormalizationOptions(document_type="purchase_invoice")
+    )
+    assert result["tables"]["batches"][0]["expiry_date"] == "2030-03-31"
+    assert result["tables"]["batches"][0]["expiry_date_precision"] == "month"
+
+
+def test_conflicting_expiry_for_same_product_batch_is_not_linked_to_existing_batch() -> None:
+    frame = pd.DataFrame(
+        [
+            ["Synthetic A", "Maker A", 300490, "10'S", "B001", "03/30", "10+0", "25.5", "40", "13/10/2026", "INV-001"],
+            ["Synthetic A", "Maker A", 300490, "10'S", "B001", "04/30", "2+0", "25.5", "40", "13/10/2026", "INV-001"],
+        ],
+        columns=[c.source_column for c in _confirmed_schema().profiled_columns],
+    )
+    result = normalize_dataframe(
+        frame, _confirmed_schema(), NormalizationOptions(document_type="purchase_invoice")
+    )
+    assert result["summary"]["batch_count"] == 1
+    assert result["tables"]["transactions"][0]["batch_record_id"] is not None
+    assert result["tables"]["transactions"][1]["batch_record_id"] is None
+    assert any(issue["code"] == "conflicting_batch_expiry" for issue in result["issues"])
+
+
+def test_document_date_parse_error_is_reported_once_per_row() -> None:
+    frame = pd.DataFrame(
+        [["Synthetic A", "Maker A", 300490, "10'S", "B001", "03/30", "10+0", "25.5", "40", "31/31/2026", "INV-001"]],
+        columns=[c.source_column for c in _confirmed_schema().profiled_columns],
+    )
+    result = normalize_dataframe(
+        frame, _confirmed_schema(), NormalizationOptions(document_type="purchase_invoice")
+    )
+    assert sum(issue["code"] == "invalid_document_date" for issue in result["issues"]) == 1
+
+
+def test_inventory_snapshot_requires_explicit_snapshot_date() -> None:
+    schema = SchemaConfirmationRequest.model_validate({
+        "profiled_columns": [
+            {"column_index": 0, "source_column": "PRODUCT"},
+            {"column_index": 1, "source_column": "BATCH"},
+            {"column_index": 2, "source_column": "CURRENT STOCK"},
+            {"column_index": 3, "source_column": "DOCUMENT DATE"},
+        ],
+        "mappings": [
+            {"column_index": 0, "source_column": "PRODUCT", "action": "map", "canonical_field": "product_name"},
+            {"column_index": 1, "source_column": "BATCH", "action": "map", "canonical_field": "batch_code"},
+            {"column_index": 2, "source_column": "CURRENT STOCK", "action": "map", "canonical_field": "current_quantity", "quantity_unit": "pack"},
+            {"column_index": 3, "source_column": "DOCUMENT DATE", "action": "map", "canonical_field": "document_date", "date_format": "YYYY-MM-DD"},
+        ],
+    })
+    frame = pd.DataFrame(
+        [["Synthetic A", "B001", 8, "2026-10-01"]],
+        columns=["PRODUCT", "BATCH", "CURRENT STOCK", "DOCUMENT DATE"],
+    )
+    result = normalize_dataframe(
+        frame, schema, NormalizationOptions(document_type="inventory_report")
+    )
+    assert result["summary"]["inventory_snapshot_count"] == 0
+    assert any(issue["code"] == "missing_snapshot_date" for issue in result["issues"])
+
+
+def test_negative_on_hand_quantity_does_not_create_snapshot() -> None:
+    schema = SchemaConfirmationRequest.model_validate({
+        "profiled_columns": [
+            {"column_index": 0, "source_column": "PRODUCT"},
+            {"column_index": 1, "source_column": "BATCH"},
+            {"column_index": 2, "source_column": "CURRENT STOCK"},
+        ],
+        "mappings": [
+            {"column_index": 0, "source_column": "PRODUCT", "action": "map", "canonical_field": "product_name"},
+            {"column_index": 1, "source_column": "BATCH", "action": "map", "canonical_field": "batch_code"},
+            {"column_index": 2, "source_column": "CURRENT STOCK", "action": "map", "canonical_field": "current_quantity", "quantity_unit": "pack"},
+        ],
+    })
+    frame = pd.DataFrame([["Synthetic A", "B001", -2]], columns=["PRODUCT", "BATCH", "CURRENT STOCK"])
+    result = normalize_dataframe(
+        frame,
+        schema,
+        NormalizationOptions(document_type="inventory_report", snapshot_date=date(2026, 10, 1)),
+    )
+    assert result["summary"]["inventory_snapshot_count"] == 0
+    assert any(issue["code"] == "negative_quantity_on_hand" for issue in result["issues"])
+
+
+def test_quantity_and_free_quantity_with_different_units_are_not_added() -> None:
+    schema = SchemaConfirmationRequest.model_validate({
+        "profiled_columns": [
+            {"column_index": 0, "source_column": "PRODUCT"},
+            {"column_index": 1, "source_column": "BATCH"},
+            {"column_index": 2, "source_column": "QTY"},
+            {"column_index": 3, "source_column": "FREE"},
+        ],
+        "mappings": [
+            {"column_index": 0, "source_column": "PRODUCT", "action": "map", "canonical_field": "product_name"},
+            {"column_index": 1, "source_column": "BATCH", "action": "map", "canonical_field": "batch_code"},
+            {"column_index": 2, "source_column": "QTY", "action": "map", "canonical_field": "quantity", "quantity_unit": "pack", "transaction_type": "purchase_receipt"},
+            {"column_index": 3, "source_column": "FREE", "action": "map", "canonical_field": "free_quantity", "quantity_unit": "tablet"},
+        ],
+    })
+    frame = pd.DataFrame([["Synthetic A", "B001", 10, 2]], columns=["PRODUCT", "BATCH", "QTY", "FREE"])
+    result = normalize_dataframe(frame, schema, NormalizationOptions(document_type="purchase_invoice"))
+    assert result["summary"]["transaction_count"] == 0
+    assert any(issue["code"] == "conflicting_free_quantity_units" for issue in result["issues"])
+
+
+def test_month_year_format_is_restricted_to_expiry_date() -> None:
+    with pytest.raises(ValueError, match="supported only for expiry_date"):
+        SchemaConfirmationRequest.model_validate({
+            "profiled_columns": [{"column_index": 0, "source_column": "DOC DATE"}],
+            "mappings": [{
+                "column_index": 0,
+                "source_column": "DOC DATE",
+                "action": "map",
+                "canonical_field": "document_date",
+                "date_format": "MM/YY",
+            }],
+        })

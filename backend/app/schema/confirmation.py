@@ -173,6 +173,11 @@ class ColumnMappingChoice(BaseModel):
                 f"Choose from: {', '.join(sorted(SUPPORTED_DATE_FORMATS))}."
             )
 
+        if self.date_format in MONTH_YEAR_FORMATS and self.canonical_field != "expiry_date":
+            raise ValueError(
+                "Month/year formats are currently supported only for expiry_date; "
+                "transaction/document dates need a day-level format."
+            )
         if self.canonical_field == "expiry_date" and self.date_format in MONTH_YEAR_FORMATS:
             if self.date_convention != "month_end":
                 raise ValueError(

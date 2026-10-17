@@ -100,15 +100,48 @@ def _serializable(value: Any) -> Any:
 
 
 def _parse_number(value: Any) -> float | None:
+    """Parse decimals and valid Western/Indian grouping without guessing comma decimals."""
     if _is_missing(value):
         return None
     if isinstance(value, bool):
         raise ValueError("Boolean values are not valid numeric quantities or amounts.")
-    text = str(value).strip().replace(",", "")
+
+    text = str(value).strip()
     if not text:
         return None
+    sign = ""
+    if text[0] in {"+", "-"}:
+        sign, text = text[0], text[1:]
+    if not text or text == "." or text.count(".") > 1:
+        raise ValueError("Value is not a recognizable number.")
+
+    integer_part, decimal_point, fractional_part = text.partition(".")
+    if not integer_part and not fractional_part:
+        raise ValueError("Value is not a recognizable number.")
+    if not integer_part:
+        integer_part = "0"
+    if decimal_point and fractional_part and not fractional_part.isdigit():
+        raise ValueError("Value is not a recognizable number.")
+    if decimal_point and not fractional_part:
+        fractional_part = "0"
+
+    if "," in integer_part:
+        western_grouping = re.fullmatch(r"\d{1,3}(?:,\d{3})+", integer_part)
+        indian_grouping = re.fullmatch(r"\d{1,2}(?:,\d{2})*,\d{3}", integer_part)
+        if not (western_grouping or indian_grouping):
+            raise ValueError(
+                "Number uses an ambiguous or invalid comma grouping; use standard grouping "
+                "and a period for decimals."
+            )
+        integer_part = integer_part.replace(",", "")
+    elif not integer_part.isdigit():
+        raise ValueError("Value is not a recognizable number.")
+
+    normalized = sign + integer_part
+    if decimal_point:
+        normalized += "." + fractional_part
     try:
-        decimal_value = Decimal(text)
+        decimal_value = Decimal(normalized)
     except (InvalidOperation, ValueError) as exc:
         raise ValueError("Value is not a recognizable number.") from exc
     if not decimal_value.is_finite():
@@ -124,9 +157,28 @@ def _parse_date(
     date_format: str,
     date_convention: str | None = None,
 ) -> tuple[str | None, str | None]:
-    """Return (ISO date, precision) and apply only explicitly confirmed conventions."""
+    """Return (ISO date, precision) using only a confirmed source format/convention."""
     if _is_missing(value):
         return None, None
+    if date_format not in _DATE_PY_FORMAT:
+        raise ValueError(f"Unsupported date format: {date_format!r}")
+
+    if date_format in MONTH_YEAR_FORMATS:
+        if date_convention != "month_end":
+            raise ValueError("Month/year expiry needs the explicitly confirmed month_end convention.")
+        # Excel may return a datetime for an MM/YY cell; its day component must not
+        # override the explicitly confirmed month-end expiry convention.
+        if isinstance(value, (pd.Timestamp, datetime, date)):
+            year, month = value.year, value.month
+        else:
+            raw = str(value).strip()
+            if not raw:
+                return None, None
+            parsed = datetime.strptime(raw, _DATE_PY_FORMAT[date_format]).date()
+            year, month = parsed.year, parsed.month
+        last_day = calendar.monthrange(year, month)[1]
+        return date(year, month, last_day).isoformat(), "month"
+
     if isinstance(value, pd.Timestamp):
         return value.date().isoformat(), "day"
     if isinstance(value, datetime):
@@ -137,15 +189,7 @@ def _parse_date(
     raw = str(value).strip()
     if not raw:
         return None, None
-    if date_format not in _DATE_PY_FORMAT:
-        raise ValueError(f"Unsupported date format: {date_format!r}")
-
     parsed = datetime.strptime(raw, _DATE_PY_FORMAT[date_format]).date()
-    if date_format in MONTH_YEAR_FORMATS:
-        if date_convention != "month_end":
-            raise ValueError("Month/year expiry needs the explicitly confirmed month_end convention.")
-        last_day = calendar.monthrange(parsed.year, parsed.month)[1]
-        return date(parsed.year, parsed.month, last_day).isoformat(), "month"
     return parsed.isoformat(), "day"
 
 
@@ -214,6 +258,8 @@ def normalize_dataframe(
     document_keys: dict[tuple[Any, ...], str] = {}
     document_by_id: dict[str, dict[str, Any]] = {}
 
+    date_cache: dict[tuple[int, str], tuple[str | None, str | None]] = {}
+
     def add_issue(
         code: str,
         severity: Literal["warning", "error"],
@@ -274,15 +320,20 @@ def normalize_dataframe(
         return parsed
 
     def get_date(row_index: int, field: str) -> tuple[str | None, str | None]:
+        cache_key = (row_index, field)
+        if cache_key in date_cache:
+            return date_cache[cache_key]
         mapping = mappings.get(field)
         if mapping is None:
-            return None, None
+            date_cache[cache_key] = (None, None)
+            return date_cache[cache_key]
         value = raw_value(row_index, mapping)
         try:
-            iso, precision = _parse_date(
+            result = _parse_date(
                 value, mapping.date_format or "", mapping.date_convention
             )
-            return iso, precision
+            date_cache[cache_key] = result
+            return result
         except (ValueError, OverflowError) as exc:
             add_issue(
                 f"invalid_{field}",
@@ -292,7 +343,8 @@ def normalize_dataframe(
                 mapping.source_column,
                 field,
             )
-            return None, None
+            date_cache[cache_key] = (None, None)
+            return date_cache[cache_key]
 
     def build_product(row_index: int) -> dict[str, Any] | None:
         product_code = get_text(row_index, "source_product_code")
@@ -399,11 +451,12 @@ def normalize_dataframe(
                 add_issue(
                     "conflicting_batch_expiry",
                     "error",
-                    "The same product/batch has conflicting normalized expiry dates.",
+                    "The same product/batch has conflicting normalized expiry dates; this row is not linked to the existing batch.",
                     row_index,
                     expiry_mapping.source_column if expiry_mapping else None,
                     "expiry_date",
                 )
+                return None
             elif expiry_date and not existing.get("expiry_date"):
                 existing["expiry_date"] = expiry_date
                 existing["expiry_date_precision"] = expiry_precision
@@ -533,18 +586,39 @@ def normalize_dataframe(
 
         # A separately mapped free-quantity column must use the same unit as the
         # billed quantity; otherwise combined/effective quantity is not meaningful.
-        if (
+        quantity_units_conflict = bool(
             free_mapping
             and quantity_mapping
             and free_mapping.column_index != quantity_mapping.column_index
             and free_mapping.quantity_unit != quantity_mapping.quantity_unit
-        ):
+        )
+        if quantity_units_conflict:
             add_issue(
                 "conflicting_free_quantity_units",
                 "error",
                 "Billed and free quantities use different declared units; they cannot be added without a verified conversion.",
                 row_index,
                 free_mapping.source_column,
+                "free_quantity",
+            )
+        if free_mapping and not is_composite_quantity and free_value is None:
+            raw_free = raw_value(row_index, free_mapping)
+            if _is_missing(raw_free) or not str(raw_free).strip():
+                add_issue(
+                    "missing_free_quantity",
+                    "warning",
+                    "Free quantity is mapped but missing; effective_quantity is left unknown rather than assuming zero.",
+                    row_index,
+                    free_mapping.source_column,
+                    "free_quantity",
+                )
+        if free_value is not None and free_value < 0:
+            add_issue(
+                "negative_free_quantity",
+                "error",
+                "Free quantity cannot be negative.",
+                row_index,
+                free_mapping.source_column if free_mapping else None,
                 "free_quantity",
             )
 
@@ -565,7 +639,7 @@ def normalize_dataframe(
             document_date = options.document_date.isoformat()
 
         transaction_records: list[tuple[str, float, ColumnMappingChoice | None]] = []
-        if quantity_mapping and quantity_value is not None:
+        if quantity_mapping and quantity_value is not None and not quantity_units_conflict:
             transaction_records.append(
                 (quantity_mapping.transaction_type or "unknown", quantity_value, quantity_mapping)
             )
@@ -586,7 +660,12 @@ def normalize_dataframe(
                 )
                 continue
             normalized_quantity = abs(quantity) if tx_type in _RETURN_TYPES | _OUTFLOW_TYPES else quantity
-            effective_quantity = normalized_quantity + (free_value or 0.0)
+            if not free_mapping:
+                effective_quantity = normalized_quantity
+            elif free_value is not None and free_value >= 0 and not quantity_units_conflict:
+                effective_quantity = normalized_quantity + free_value
+            else:
+                effective_quantity = None
             if tx_type in _RETURN_TYPES and quantity < 0:
                 transformations.append(
                     {
@@ -676,17 +755,22 @@ def normalize_dataframe(
                     "Mapped current_quantity and quantity_on_hand disagree; no snapshot was created for this row.",
                     row_index,
                 )
-            elif non_null_stock_values and len(units) == 1:
-                snapshot_date = (
-                    options.snapshot_date.isoformat()
-                    if options.snapshot_date
-                    else document_date
+            elif non_null_stock_values and non_null_stock_values[0] < 0:
+                add_issue(
+                    "negative_quantity_on_hand",
+                    "error",
+                    "On-hand stock cannot be negative; no inventory snapshot was created.",
+                    row_index,
+                    stock_mappings[0].source_column,
+                    stock_mappings[0].canonical_field,
                 )
+            elif non_null_stock_values and len(units) == 1:
+                snapshot_date = options.snapshot_date.isoformat() if options.snapshot_date else None
                 if not snapshot_date:
                     add_issue(
                         "missing_snapshot_date",
                         "error",
-                        "Current stock requires an explicit snapshot_date or mapped document_date.",
+                        "Current stock requires an explicit snapshot_date; document date is not assumed to be the stock-as-of date.",
                         row_index,
                     )
                 else:

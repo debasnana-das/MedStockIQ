@@ -15,9 +15,9 @@
 ## Phase 2 — Schema mapping and normalization
 - [ ] Build candidate mappings from source columns to canonical fields.
 - [ ] Require explicit confirmation for ambiguous mappings.
-- [ ] Normalize products, batches, source documents, transactions and stock snapshots.
+- [x] Implement initial normalization for products, batches, source documents, transactions and stock snapshots.
 - [ ] Preserve unmapped columns and transformation metadata.
-- [ ] Add tests for the two known invoice layouts.
+- [ ] Complete end-to-end regression tests for both known invoice layouts.
 
 ## Phase 3 — Data quality and deterministic analysis
 - [ ] Implement date, quantity, unit, duplicate and monetary validation.
