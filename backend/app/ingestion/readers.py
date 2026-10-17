@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from io import BytesIO
-
 import pandas as pd
+from io import BytesIO
 
 
 MAX_PROFILE_ROWS = 20_000
