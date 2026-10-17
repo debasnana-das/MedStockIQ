@@ -58,7 +58,7 @@ def profile_dataframe(frame: pd.DataFrame, truncated: bool = False) -> dict[str,
     column_profiles: list[dict[str, Any]] = []
     warnings: list[str] = []
 
-    for column in frame.columns:
+    for column_index, column in enumerate(frame.columns):
         series = frame[column]
         source_name = str(column)
         samples = [_safe_sample(value) for value in series.dropna().head(5).tolist()]
@@ -70,6 +70,7 @@ def profile_dataframe(frame: pd.DataFrame, truncated: bool = False) -> dict[str,
 
         column_profiles.append(
             {
+                "column_index": column_index,
                 "source_column": source_name,
                 "detected_type": _detected_type(series, canonical_field),
                 "non_null_count": int(series.notna().sum()),
