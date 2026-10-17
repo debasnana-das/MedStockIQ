@@ -503,10 +503,18 @@ def normalize_dataframe(
         free_mapping = mappings.get("free_quantity")
 
         quantity_value: float | None = None
-        free_value: float | None = get_number(row_index, "free_quantity")
+        is_composite_quantity = bool(
+            quantity_mapping
+            and quantity_mapping.transformation_rule == "split_quantity_and_free"
+        )
+        # A composite source maps to both quantity and free_quantity. Do not try to
+        # parse that same "10+2" value as a standalone numeric free quantity first.
+        free_value: float | None = (
+            None if is_composite_quantity else get_number(row_index, "free_quantity")
+        )
         if quantity_mapping:
             raw_quantity = raw_value(row_index, quantity_mapping)
-            if quantity_mapping.transformation_rule == "split_quantity_and_free":
+            if is_composite_quantity:
                 try:
                     quantity_value, composite_free = _composite_quantity(raw_quantity)
                     free_value = composite_free
@@ -529,6 +537,23 @@ def normalize_dataframe(
                     )
             else:
                 quantity_value = get_number(row_index, "quantity", required=True)
+
+        # A separately mapped free-quantity column must use the same unit as the
+        # billed quantity; otherwise combined/effective quantity is not meaningful.
+        if (
+            free_mapping
+            and quantity_mapping
+            and free_mapping.column_index != quantity_mapping.column_index
+            and free_mapping.quantity_unit != quantity_mapping.quantity_unit
+        ):
+            add_issue(
+                "conflicting_free_quantity_units",
+                "error",
+                "Billed and free quantities use different declared units; they cannot be added without a verified conversion.",
+                row_index,
+                free_mapping.source_column,
+                "free_quantity",
+            )
 
         product = build_product(row_index)
         if product is None:
