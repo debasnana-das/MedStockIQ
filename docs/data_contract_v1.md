@@ -265,6 +265,12 @@ For each uploaded file, preserve mapping records with:
 
 The UI should ask about unclear mappings. Unknown columns should be preserved as unmapped metadata rather than silently discarded.
 
+### Canonical normalization implementation notes
+
+The current normalization service consumes a `SchemaConfirmationRequest` plus a source dataframe and confirmed organization/document context. It returns canonical Products, Batches, SourceDocuments, Transactions, and InventorySnapshots with generated within-run IDs, source-row traceability, a transformation log, and structured data-quality issues.
+
+Normalization does not infer values from column names after confirmation. It checks that the current file's column names and order match the confirmed profile. It supports a small explicit date-format catalogue; month/year expiry values require the explicit `month_end` convention. A composite `QTY+FREE` field is split only when the confirmed transformation rule is supplied. Duplicate or conflicting batch/product information is reported rather than silently overwritten. This prototype returns data in memory and does not persist it or calculate inventory risks.
+
 ## 7. Minimum data readiness by risk module
 
 A file can be ingested successfully without supporting every analysis. Each risk module must return its own readiness status.

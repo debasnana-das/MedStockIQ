@@ -2,64 +2,57 @@
 
 **AI-assisted inventory intelligence for pharmacies and stockists.**
 
-MedStockIQ is a data-driven platform in development that accepts business files, proposes a canonical schema, asks the user to validate ambiguous mappings, checks data quality, and then analyzes supported inventory risks.
+MedStockIQ is an early-stage platform that profiles business files, suggests canonical field mappings, validates user-confirmed schemas, and transforms the files into common internal records before inventory analysis.
 
 ## Current working slice
 
 - `GET /health` — API process health check.
-- `POST /api/v1/profile` — accepts CSV/XLSX files up to 10 MB, profiles up to 20,000 rows, and returns column/type/missingness/duplicate summaries plus candidate canonical mappings. The upload is processed in memory and is not persisted by this endpoint.
-- `GET /api/v1/schema/fields` — returns the supported canonical field catalogue and the additional metadata needed for each field.
-- `POST /api/v1/schema/confirm` — validates one explicit map/ignore decision for every profiled source column, flags conflicting target fields, and records whether a suggestion was confirmed, corrected, manually mapped, or ignored.
-- A deterministic synthetic-data generator for fictional product, batch, transaction, inventory-snapshot, replenishment and separate test-only evaluation-truth CSV files.
+- `POST /api/v1/profile` — profiles CSV/XLSX files up to 10 MB and 20,000 rows, suggesting canonical mappings without persisting uploads.
+- `GET /api/v1/schema/fields` — lists canonical fields and required mapping metadata.
+- `POST /api/v1/schema/confirm` — validates explicit mapping/ignore decisions for every profiled column.
+- `POST /api/v1/normalize` — applies the confirmed mapping to a matching CSV/XLSX upload and returns canonical table counts and limited previews without persistence.
+- `normalize_dataframe` — reusable Python service returning full canonical Product, Batch, SourceDocument, Transaction and InventorySnapshot records, including transformation logs and data-quality issues.
+- Synthetic data generator for fictional products, batches, transactions, snapshots, replenishment orders and separate test-only evaluation truth.
 
-The schema-confirmation API is currently stateless: it validates the column list and choices supplied by the client, but does not save mappings or uploaded files. It does not yet perform date parsing, composite-value splitting, canonical data normalization, database persistence or inventory analysis.
+## Canonical normalization boundaries
 
-## Roadmap
+Mappings are not guessed again during normalization. Quantity units, movement types, date formats, and composite quantity splitting must be supplied explicitly. Month/year expiry such as `03/30` requires the explicit convention `month_end` before normalization. Invalid values and conflicting batch/product attributes are surfaced as issues. This stage does not perform forecasts or risk scoring and does not persist input or output.
 
-- Build a user-facing schema-confirmation UI.
-- Normalize confirmed mappings into canonical Product, Batch, SourceDocument, InventoryTransaction and InventorySnapshot records.
-- Implement comprehensive data-quality/readiness checks.
-- Add expiry, overstock and later stock-out analysis when required inputs are available.
-- Add forecasting, recommendations, reports, conversational analytics, authentication, tenant isolation and production deployment.
+PDF/OCR, a visual confirmation UI, database persistence, risk calculations, forecasting, reporting, chat, authentication, tenant isolation and production deployment remain future work.
 
 ## Quick start
 
-See [Development setup](docs/development_setup.md) and the [profiling and schema-confirmation API guide](docs/profiling_api.md).
+See [Development setup](docs/development_setup.md) and [the profiling, confirmation and normalization API guide](docs/profiling_api.md).
 
-Generate a local synthetic dataset:
+Generate local synthetic data:
 
 ```powershell
 python -m synthetic_data.generate_dataset --output-dir data/synthetic --seed 42
 ```
 
-Files containing `DO_NOT_USE_AS_INPUT` are test oracles/labels and must never be included as model features. Synthetic data is for software testing and does not establish real-world predictive performance.
+Files containing `DO_NOT_USE_AS_INPUT` are test oracles/labels and must never be included as model features. Synthetic data tests software behavior only and does not establish real-world predictive performance.
 
-## Repository layout
+## Project structure
 
-- docs/ — data contract, architecture, API notes, and roadmap
-- backend/app/ — FastAPI application and modular processing components
-- synthetic_data/ — synthetic data generator and test scenarios
-- ml/ — forecasting experiments and evaluation
-- database/ — SQL schema and migrations
+- docs/ — data contract, architecture, API notes and roadmap
+- backend/app/ — FastAPI API and domain modules
+- synthetic_data/ — reproducible synthetic fixtures generator
+- ml/ — planned forecasting experiments/evaluation
+- database/ — planned SQL schema and migrations
 - frontend/ — planned user interface
-- tests/ — unit and integration tests
+- tests/ — automated tests
 
 ## Development principles
 
-1. Ask the user to confirm ambiguous column mappings.
+1. Require user confirmation for ambiguous mappings.
 2. Preserve source values and transformation metadata.
-3. Keep calculations deterministic and forecasts reproducible.
-4. Report insufficient data instead of inventing findings.
-5. Keep real pharmacy/stockist data, credentials, and uploaded invoices out of Git.
-6. Do not claim model performance on real operations until validated with authorized real-world data.
+3. Use deterministic, traceable transformations.
+4. Report insufficient or invalid data instead of silently guessing.
+5. Keep real business data, uploaded invoices, credentials and private datasets out of Git.
+6. Do not claim real-world predictive performance until validated with authorized real data.
 
 ## Planned stack
 
-- Python and FastAPI
-- PostgreSQL
-- Pandas initially; additional analytical tools only when justified
-- scikit-learn and appropriate forecasting baselines
-- React frontend, planned
-- Docker for reproducible local development
+Python, FastAPI, pandas, PostgreSQL, scikit-learn baselines, React (planned), and Docker for reproducible local development.
 
-See [Data Contract v1](docs/data_contract_v1.md) for canonical entities and field semantics.
+See [Data Contract v1](docs/data_contract_v1.md) for the canonical schema.

@@ -1,3 +1,4 @@
+from app.api.normalization import router as normalization_router
 from app.api.profiling import router as profiling_router
 from app.api.schema_confirmation import router as schema_confirmation_router
 from fastapi import FastAPI
@@ -10,6 +11,7 @@ app = FastAPI(
 
 app.include_router(profiling_router)
 app.include_router(schema_confirmation_router)
+app.include_router(normalization_router)
 
 
 @app.get("/health", tags=["system"])

@@ -28,6 +28,7 @@ def _base_payload() -> dict:
                 "proposed_canonical_field": "expiry_date",
                 "canonical_field": "expiry_date",
                 "date_format": "MM/YY",
+                "date_convention": "month_end",
             },
             {
                 "column_index": 2,

@@ -1,109 +1,60 @@
-# CSV/XLSX profiling and schema-confirmation API
+# Profiling, schema confirmation, and normalization APIs
 
-The API is a local development prototype. It does not yet authenticate users, persist uploads/mappings, normalize the source rows, or run inventory-risk analysis.
+These endpoints are local development prototypes. They do not authenticate users or persist uploaded files or normalized records.
 
-## 1. Profile an upload
+## 1. Profile a file
 
 `POST /api/v1/profile`
 
-- Accepts `.csv` and `.xlsx` files.
-- Maximum upload: 10 MB.
-- Profiles up to 20,000 rows; XLSX uses the first worksheet.
-- Upload bytes are processed in memory and are not persisted by this endpoint.
-- PDF/OCR is not implemented.
+Accepts CSV/XLSX up to 10 MB and profiles at most 20,000 rows. Excel uses the first worksheet. Response includes source column indexes/names, candidate mappings, detected types, missing/unique counts, sample values, duplicates, and warnings. Upload is processed in memory.
 
-Example:
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/v1/profile \
-  -F "file=@sample.csv"
-```
-
-The result includes a `columns` array with a zero-based `column_index`, original `source_column`, detected type, null/unique counts, sample values, and a candidate mapping. Column index plus header name is used because real files can contain duplicate column labels.
-
-## 2. Read the canonical field catalogue
+## 2. Get the canonical field catalogue
 
 `GET /api/v1/schema/fields`
 
-Returns supported canonical field names, their descriptions, and metadata required during confirmation.
+Returns supported canonical fields and the extra metadata required during confirmation. Quantity fields need explicit units; movement quantities need an explicit transaction type. Date mappings need a supported date format.
 
-Examples:
+For expiry columns containing only month/year (e.g. `03/30`), the user must also explicitly select `date_convention: "month_end"` before the date can normalize to the last calendar day of that month. This is a stated domain convention, not an automatic inference.
 
-- Date fields require a user-confirmed `date_format`, for example `MM/YY`.
-- Quantity/stock fields require a `quantity_unit`, for example `pack`, `strip`, or `tablet`.
-- The transaction `quantity` field requires `transaction_type`, such as `purchase_receipt`, `retailer_dispatch`, or `retail_sale`.
-- A composite `QTY+FREE` source column must explicitly select `split_quantity_and_free` and map its additional value to `free_quantity`.
-
-## 3. Confirm schema mappings
+## 3. Confirm a schema
 
 `POST /api/v1/schema/confirm`
 
-Send back the list of source columns returned by the profiler and exactly one decision for every column.
+Send `profiled_columns` exactly as returned by profiling, including each zero-based `column_index` and original `source_column`, plus one mapping decision per column.
 
-Each column choice is either:
+A choice has `action: "map"` with a supported canonical field and required metadata, or `action: "ignore"`. The API rejects missing decisions, mismatched column identity, unsupported target fields, conflicting targets, unknown date formats, missing units, and unresolved `QTY+FREE` semantics.
 
-- `action: "map"`: provide a supported `canonical_field` and any required metadata; or
-- `action: "ignore"`: explicitly exclude the source column from this canonical mapping.
+## 4. Normalize a file
 
-Example request:
+`POST /api/v1/normalize` (multipart form)
 
-```json
-{
-  "profiled_columns": [
-    {"column_index": 0, "source_column": "PRODUCT"},
-    {"column_index": 1, "source_column": "EXP"},
-    {"column_index": 2, "source_column": "QTY+FREE"},
-    {"column_index": 3, "source_column": "INTERNAL NOTE"}
-  ],
-  "mappings": [
-    {
-      "column_index": 0,
-      "source_column": "PRODUCT",
-      "action": "map",
-      "proposed_canonical_field": "product_name",
-      "canonical_field": "product_name"
-    },
-    {
-      "column_index": 1,
-      "source_column": "EXP",
-      "action": "map",
-      "proposed_canonical_field": "expiry_date",
-      "canonical_field": "expiry_date",
-      "date_format": "MM/YY"
-    },
-    {
-      "column_index": 2,
-      "source_column": "QTY+FREE",
-      "action": "map",
-      "proposed_canonical_field": "quantity",
-      "canonical_field": "quantity",
-      "quantity_unit": "pack",
-      "transaction_type": "purchase_receipt",
-      "transformation_rule": "split_quantity_and_free",
-      "additional_canonical_fields": ["free_quantity"]
-    },
-    {
-      "column_index": 3,
-      "source_column": "INTERNAL NOTE",
-      "action": "ignore"
-    }
-  ]
-}
-```
+Form fields:
 
-The endpoint validates that every profiled column has exactly one decision, the index/header pair matches the submitted profile, all target fields are supported, and two columns do not map to the same canonical field. It also checks that dates have a format, quantity fields have a unit, transactional quantity has a movement type, and `QTY+FREE` has an explicitly selected split rule.
+- `file`: CSV or XLSX upload.
+- `confirmed_schema_json`: JSON serialization of the full schema-confirmation request (the `profiled_columns` and `mappings` used in the previous step).
+- `options_json`: optional JSON object with context:
+  - `organization_id` (default `ORG-UNSPECIFIED`)
+  - `document_type`: `purchase_invoice`, `outward_invoice`, `retail_sales`, `inventory_report`, or `unknown`
+  - `source_file_id`, `document_number`, `document_date`, `snapshot_date`, `counterparty_id`, and `currency_code` as available/confirmed.
 
-A successful response reports the count of mapped and ignored columns, and each decision's status/origin:
+The uploaded file must have the same column names and order as the confirmed profile. Files that reach the 20,000-row profile cap are currently rejected by normalization until full-file validation is implemented.
 
-- `confirmed` / `suggestion_confirmed`
-- `corrected` / `user_corrected`
-- `confirmed` / `manual`
-- `ignored` / `user_ignored`
+The response returns counts and up to 10 preview records per canonical table, plus up to 50 data-quality issues and transformations. The Python function `normalize_dataframe` returns the full canonical tables for programmatic integration.
 
-A successful response means the schema choices passed validation; it does not mean the file is ready for every inventory analysis.
+### Canonical output tables
 
-## 4. Current boundaries
+- `products`
+- `batches`
+- `source_documents`
+- `transactions`
+- `inventory_snapshots`
 
-The confirmation endpoint is stateless. It validates the submitted column list and choices, but does not retrieve the original uploaded profile. It does not save the mapping, persist a file, parse date values, split quantity values, normalize the dataset, or calculate inventory risk. Those are later implementation stages.
+The normalizer creates internal IDs, links transaction/batch/product/document records, preserves raw expiry text, uses only confirmed quantity/date semantics, and reports invalid values and conflicts. It does not guess product equivalence across external files. Product matching is limited to source product codes or a conservative exact attribute key within the current upload.
 
-Until authentication, tenant isolation, retention controls, and deployment protections are implemented and tested, use synthetic/sanitized files locally. Do not expose this development API to the internet or use confidential live data.
+For invoice types `purchase_invoice` and `outward_invoice`, a confirmed document date is used as transaction date when no transaction date was mapped; this is recorded in the transformation list. Other document types do not receive this fallback.
+
+## 5. Current limitations and safety
+
+Normalization is stateless; no file, schema, or output is saved. The API response is a preview, not a downloadable normalized dataset. Invalid/missing values are reported as issues rather than silently imputed. No inventory-risk calculations, forecasts, or recommendations are run by this endpoint.
+
+Until authentication, tenant isolation, retention controls, full-file validation, and production protections are implemented and tested, use synthetic/sanitized files locally. Do not expose the development API to the internet or use confidential live data.

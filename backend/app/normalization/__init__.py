@@ -1,2 +1,1 @@
-"""Canonical data normalization."""
-
+"""Canonical data normalization package."""

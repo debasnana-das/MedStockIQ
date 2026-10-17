@@ -47,6 +47,19 @@ DATE_FIELDS = frozenset(
 QUANTITY_FIELDS = frozenset(
     {"quantity", "free_quantity", "current_quantity", "quantity_on_hand", "opening_stock"}
 )
+SUPPORTED_DATE_FORMATS = frozenset(
+    {
+        "MM/YY",
+        "MM/YYYY",
+        "DD/MM/YY",
+        "DD/MM/YYYY",
+        "YYYY-MM-DD",
+        "DD-MM-YYYY",
+        "DD.MM.YYYY",
+        "YYYY/MM/DD",
+    }
+)
+MONTH_YEAR_FORMATS = frozenset({"MM/YY", "MM/YYYY"})
 
 
 class ProfiledColumnReference(BaseModel):
@@ -89,12 +102,15 @@ class ColumnMappingChoice(BaseModel):
         "expiry_writeoff",
     ] | None = None
     date_format: str | None = Field(default=None, min_length=2, max_length=50)
+    date_convention: Literal["month_end"] | None = None
     transformation_rule: Literal["split_quantity_and_free"] | None = None
 
-    @field_validator("source_column", mode="before")
+    @field_validator("source_column")
     @classmethod
-    def trim_source_column(cls, value: object) -> object:
-        return value.strip() if isinstance(value, str) else value
+    def validate_source_column(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("source_column must not be blank.")
+        return value
 
     @field_validator("quantity_unit", "date_format", mode="before")
     @classmethod
@@ -122,6 +138,7 @@ class ColumnMappingChoice(BaseModel):
                     self.quantity_unit,
                     self.transaction_type,
                     self.date_format,
+                    self.date_convention,
                     self.transformation_rule,
                 )
             ):
@@ -150,6 +167,22 @@ class ColumnMappingChoice(BaseModel):
             )
         if self.date_format and self.canonical_field not in DATE_FIELDS:
             raise ValueError("date_format is only valid for a date canonical field.")
+        if self.date_format and self.date_format not in SUPPORTED_DATE_FORMATS:
+            raise ValueError(
+                f"Unsupported date_format {self.date_format!r}. "
+                f"Choose from: {', '.join(sorted(SUPPORTED_DATE_FORMATS))}."
+            )
+
+        if self.canonical_field == "expiry_date" and self.date_format in MONTH_YEAR_FORMATS:
+            if self.date_convention != "month_end":
+                raise ValueError(
+                    "Expiry values containing only month/year require "
+                    "date_convention='month_end' to make the convention explicit."
+                )
+        elif self.date_convention is not None:
+            raise ValueError(
+                "date_convention='month_end' is only valid for month/year expiry formats."
+            )
 
         targets = {self.canonical_field, *self.additional_canonical_fields}
         if targets.intersection(QUANTITY_FIELDS) and not self.quantity_unit:
@@ -277,6 +310,7 @@ def build_confirmation_response(request: SchemaConfirmationRequest) -> dict[str,
                 "quantity_unit": mapping.quantity_unit,
                 "transaction_type": mapping.transaction_type,
                 "date_format": mapping.date_format,
+                "date_convention": mapping.date_convention,
                 "transformation_rule": mapping.transformation_rule,
             }
         )
@@ -285,10 +319,6 @@ def build_confirmation_response(request: SchemaConfirmationRequest) -> dict[str,
         "This endpoint validates the submitted choices against the submitted profiling columns; it does not retrieve a stored profile.",
         "No file or schema mapping is persisted, and no data conversion or inventory analysis is executed by this endpoint.",
     ]
-    if ignored_count:
-        warnings.append(
-            "One or more columns were explicitly ignored. Ensure those fields are not needed by a downstream analysis."
-        )
     if any(item["canonical_field"] in DATE_FIELDS for item in results if item["canonical_field"]):
         warnings.append(
             "Date formats are recorded as user choices; date values have not yet been parsed or normalized."
@@ -300,6 +330,10 @@ def build_confirmation_response(request: SchemaConfirmationRequest) -> dict[str,
     ):
         warnings.append(
             "Units and movement types are recorded as metadata; no unit conversion or stock arithmetic has run."
+        )
+    if ignored_count:
+        warnings.append(
+            "One or more columns were explicitly ignored. Ensure those fields are not needed by a downstream analysis."
         )
 
     return {
