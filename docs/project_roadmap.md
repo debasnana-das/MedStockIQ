@@ -17,7 +17,7 @@
 - [ ] Require explicit confirmation for ambiguous mappings.
 - [x] Implement initial normalization for products, batches, source documents, transactions and stock snapshots.
 - [ ] Preserve unmapped columns and transformation metadata.
-- [ ] Complete end-to-end regression tests for both known invoice layouts.
+- [x] Add baseline regression tests for both observed invoice layouts; additional label variations and field semantics remain to be validated.
 
 ## Phase 3 — Data quality and deterministic analysis
 - [ ] Implement date, quantity, unit, duplicate and monetary validation.

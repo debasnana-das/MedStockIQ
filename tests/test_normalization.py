@@ -380,3 +380,78 @@ def test_incomplete_redundant_stock_fields_do_not_create_snapshot() -> None:
     )
     assert result["summary"]["inventory_snapshot_count"] == 0
     assert any(issue["code"] == "incomplete_redundant_stock_fields" for issue in result["issues"])
+
+
+
+def test_stockist_outward_invoice_layout_normalizes() -> None:
+    columns = [
+        "SN", "HSN", "MFG", "PRODUCT", "OLD_MRP", "PACK", "BATCH NO", "EXP",
+        "QTY", "MRP", "RATE", "DISC", "DISC2", "GST%", "AMOUNT",
+    ]
+    canonical_by_source = {
+        "SN": "source_row_number",
+        "HSN": "hsn_code",
+        "MFG": "manufacturer_name",
+        "PRODUCT": "product_name",
+        "OLD_MRP": "previous_mrp",
+        "PACK": "pack_description",
+        "BATCH NO": "batch_code",
+        "EXP": "expiry_date",
+        "QTY": "quantity",
+        "MRP": "mrp",
+        "RATE": "unit_rate",
+        "DISC": "discount_percent",
+        "DISC2": "secondary_discount",
+        "GST%": "tax_rate",
+        "AMOUNT": "line_amount",
+    }
+    mappings = []
+    for index, column in enumerate(columns):
+        mapping = {
+            "column_index": index,
+            "source_column": column,
+            "action": "map",
+            "canonical_field": canonical_by_source[column],
+        }
+        if column == "EXP":
+            mapping.update({"date_format": "MM/YY", "date_convention": "month_end"})
+        if column == "QTY":
+            mapping.update({"quantity_unit": "pack", "transaction_type": "retailer_dispatch"})
+        mappings.append(mapping)
+
+    schema = SchemaConfirmationRequest.model_validate({
+        "profiled_columns": [
+            {"column_index": i, "source_column": column}
+            for i, column in enumerate(columns)
+        ],
+        "mappings": mappings,
+    })
+    frame = pd.DataFrame(
+        [[1, 300490, "Maker B", "Synthetic B", 31.5, "10'S", "SB-20", "06/27", 3, 45, 27.5, 5, 1.5, 12, 82.5]],
+        columns=columns,
+    )
+
+    result = normalize_dataframe(
+        frame,
+        schema,
+        NormalizationOptions(
+            organization_id="ORG-STOCKIST-TEST",
+            document_type="outward_invoice",
+            document_number="OUT-TEST-001",
+            document_date=date(2026, 10, 14),
+            counterparty_id="PHARMACY-ANON-01",
+        ),
+        source_file_name="synthetic_stockist_invoice.csv",
+        source_format="csv",
+    )
+
+    assert result["summary"]["product_count"] == 1
+    assert result["summary"]["batch_count"] == 1
+    assert result["summary"]["source_document_count"] == 1
+    assert result["summary"]["transaction_count"] == 1
+    assert result["tables"]["products"][0]["product_name"] == "Synthetic B"
+    assert result["tables"]["products"][0]["manufacturer_name"] == "Maker B"
+    assert result["tables"]["batches"][0]["expiry_date"] == "2027-06-30"
+    assert result["tables"]["transactions"][0]["transaction_type"] == "retailer_dispatch"
+    assert result["tables"]["transactions"][0]["quantity"] == 3
+    assert result["tables"]["transactions"][0]["transaction_date"] == "2026-10-14"
