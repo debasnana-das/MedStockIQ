@@ -38,6 +38,11 @@ class NormalizationOptions(BaseModel):
     snapshot_date: date | None = None
     counterparty_id: str | None = Field(default=None, max_length=200)
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
+    # Only confirm true when this export includes all sale lines and all zero-sale
+    # days throughout the supplied continuous reporting window.
+    sales_history_complete: bool = False
+    sales_history_start_date: date | None = None
+    sales_history_end_date: date | None = None
 
 
 _NUMERIC_FIELDS = {

@@ -100,3 +100,20 @@ The `quality_report.inventory_analysis` object is calculated for preview respons
 - **Indicative MRP value:** calculated only where a dated same-batch transaction supplies an unambiguous MRP, matching declared quantity unit, and confirmed currency. This assumes the mapped MRP is per that quantity unit. It is **indicative retail-price exposure**, not purchase cost, expected loss, write-off value or recoverable value. If price/currency evidence is missing or conflicting, the value is omitted.
 
 The report only evaluates data present in the current normalization run. It does not merge inventory history across separate uploaded files, and a reconciliation match is not proof that the movement ledger is complete. Uploads containing only supplier or stockist invoices do not create stock-on-hand estimates; an explicit dated stock snapshot is required.
+
+
+## 9. Demand baseline evaluation
+
+The `quality_report.forecasting_baseline` report is produced for every normalization request and persisted within the saved quality report. It is intentionally separate from `analysis_readiness.demand_forecasting`: readiness indicates required inputs appear to be present, while this report attempts an actual time-based backtest only when coverage has been explicitly confirmed.
+
+For `document_type: "retail_sales"`, set the following in `options_json` only when they are true of the uploaded extract:
+
+- `sales_history_complete: true` — confirms that every retail-sale line and every no-sale day in the declared continuous reporting period is represented by the extract.
+- `sales_history_start_date: "YYYY-MM-DD"`
+- `sales_history_end_date: "YYYY-MM-DD"`
+
+The evaluator blocks forecasts if the coverage flag is false, either boundary is missing/reversed, valid sale rows fall outside the declared range, or the window has fewer than 28 training days plus 7 chronological holdout days. Confirmed complete periods are expanded to daily frequency, so days without transaction rows are treated as zero-demand days; do not confirm completeness for a partial invoice/purchase history or a file that omits some till systems, branches, or dates.
+
+For each eligible product/unit series, the evaluator compares a last-observed-day baseline and a 7-day seasonal-naive baseline on the final seven days of history. MAE, RMSE and WAPE are reported where defined. The selected baseline is refit on the full covered history to produce a seven-day daily forecast. Products with mixed units or insufficient training data are excluded and explained. Forecasts are labelled `baseline_only`; the evaluation is a single holdout, not rolling-origin validation or proof of operational accuracy.
+
+Baseline output does not calculate inventory risk or automatically trigger replenishment. Do not use these predictions for ordering decisions until completeness has been verified and the baseline has been compared with rolling-origin backtests on authorized data.

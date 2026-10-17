@@ -38,9 +38,11 @@
 - [ ] Reconcile inventory history across multiple persisted runs only after a cross-upload ledger and identity-matching policy are defined.
 
 ## Phase 4 — Forecasting and risk analysis
-- [ ] Create simple time-series baselines before selecting advanced models.
-- [ ] Use chronological train/validation/test splits to avoid leakage.
-- [ ] Evaluate forecast error and alert usefulness.
+- [x] Add daily retail-sales aggregation and naïve/7-day seasonal baseline comparison.
+- [x] Add a chronological 7-day holdout, MAE/RMSE/WAPE metrics, and 7-day baseline forecast.
+- [x] Require explicit complete-history confirmation and date boundaries before zero-filling or forecasting.
+- [ ] Add rolling-origin evaluation and compare forecast performance using an authorized, verified sales history.
+- [ ] Evaluate alert usefulness and only then consider more complex models.
 - [x] Provide basic batch expiry alerts with evidence, severity windows and explicit provisional MRP-exposure semantics.
 - [ ] Build overstock findings and validated expiry-loss estimates with evidence, assumptions and uncertainty.
 - [ ] Add stock-out only when current inventory and replenishment data are available.

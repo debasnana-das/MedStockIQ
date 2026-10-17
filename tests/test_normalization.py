@@ -204,6 +204,8 @@ def test_normalize_endpoint_returns_preview_and_does_not_claim_persistence(clien
     assert body["quality_report"]["analysis_readiness"]["demand_forecasting"]["status"] == "insufficient_data"
     assert body["quality_report"]["inventory_analysis"]["status"] == "insufficient_data"
     assert body["quality_report"]["inventory_analysis"]["summary"]["expiry_alert_count"] == 0
+    assert body["quality_report"]["forecasting_baseline"]["status"] == "insufficient_data"
+    assert body["quality_report"]["forecasting_baseline"]["forecasts"] == []
 
 
 
