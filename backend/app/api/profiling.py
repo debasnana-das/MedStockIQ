@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
-
 from app.ingestion.readers import read_tabular_content
 from app.schema.profiler import profile_dataframe
+from fastapi import APIRouter, File, HTTPException, UploadFile
 
 
 router = APIRouter(prefix="/api/v1", tags=["data profiling"])
@@ -15,7 +14,7 @@ MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 
 
 @router.post("/profile")
-async def profile_uploaded_file(file: UploadFile = File(...)) -> dict:
+async def profile_uploaded_file(file: UploadFile = File(...)) -> dict:  # noqa: B008
     """Profile a CSV/XLSX upload and suggest column mappings.
 
     This MVP keeps upload bytes in memory for the request and does not store them.
