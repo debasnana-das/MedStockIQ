@@ -19,6 +19,8 @@ jobs:
           cache: pip
       - name: Install package and development tools
         run: python -m pip install -e ".[dev]"
+      - name: Verify database migration against SQLite
+        run: DATABASE_URL=sqlite:///./migration_test.db alembic upgrade head
       - name: Lint
         run: ruff check .
       - name: Test

@@ -1,18 +1,24 @@
-"""Stateless API endpoint for canonical normalization."""
+"""Upload, normalize, optionally persist, and review normalization runs."""
 
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
 from pydantic import ValidationError
+from sqlalchemy.exc import SQLAlchemyError
 
+from app.db.persistence import get_persisted_normalization_preview, persist_normalization_result
+from app.db.session import DatabaseNotConfigured, session_scope
 from app.ingestion.readers import read_tabular_content
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
 from app.schema.confirmation import SchemaConfirmationRequest
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["canonical normalization"])
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_PREVIEW_ROWS = 10
@@ -24,11 +30,12 @@ async def normalize_uploaded_file(
     file: UploadFile = File(...),
     confirmed_schema_json: str = Form(...),
     options_json: str = Form(default="{}"),
+    persist: bool = Form(default=False),
 ) -> dict[str, Any]:
-    """Normalize a CSV/XLSX upload using an explicitly confirmed schema.
+    """Normalize confirmed CSV/XLSX mappings; saving is explicitly opt-in.
 
-    The file and normalized output are not persisted. The response contains full
-    entity counts plus limited previews and data-quality issues.
+    When persist=true, canonical entities, mapping choices, quality issues and
+    transformations are written in one transaction. Original file bytes are not saved.
     """
     filename = Path(file.filename or "").name
     suffix = Path(filename).suffix.casefold()
@@ -46,6 +53,7 @@ async def normalize_uploaded_file(
     except (ValueError, UnicodeDecodeError) as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except Exception as exc:
+        logger.exception("Failed to parse uploaded tabular file")
         raise HTTPException(status_code=400, detail="Could not parse the uploaded file.") from exc
 
     if truncated:
@@ -65,6 +73,12 @@ async def normalize_uploaded_file(
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid JSON form field: {exc}") from exc
 
+    if persist and options.organization_id == "ORG-UNSPECIFIED":
+        raise HTTPException(
+            status_code=422,
+            detail="Set options_json.organization_id explicitly before persisting a normalization run.",
+        )
+
     try:
         result = normalize_dataframe(
             frame=frame,
@@ -75,6 +89,38 @@ async def normalize_uploaded_file(
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    if persist:
+        try:
+            with session_scope() as session:
+                run_id = persist_normalization_result(
+                    session=session,
+                    result=result,
+                    confirmed_schema=confirmed_schema,
+                    options=options,
+                    source_file_name=filename,
+                    source_format=suffix.removeprefix("."),
+                    source_file_bytes=len(content),
+                )
+        except DatabaseNotConfigured as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        except SQLAlchemyError as exc:
+            logger.exception("Could not persist normalization run")
+            raise HTTPException(
+                status_code=503,
+                detail="Database persistence failed; no partial normalization run was saved.",
+            ) from exc
+        result["normalization_run_id"] = run_id
+        result["persistence"] = "saved_to_postgresql"
+        result["note"] = (
+            "Normalized entities, confirmed mapping, summary, issues and transformation traces "
+            "were saved transactionally. The original uploaded file bytes were not stored."
+        )
+    else:
+        result["note"] = (
+            "Preview only: nothing was saved. Set persist=true and configure DATABASE_URL "
+            "to save this normalization run."
+        )
 
     preview_tables = {
         table_name: records[:MAX_PREVIEW_ROWS]
@@ -87,8 +133,34 @@ async def normalize_uploaded_file(
     result["transformations_preview"] = all_transformations[:MAX_ISSUE_PREVIEW]
     result["issue_preview_truncated"] = len(all_issues) > MAX_ISSUE_PREVIEW
     result["transformation_preview_truncated"] = len(all_transformations) > MAX_ISSUE_PREVIEW
-    result["note"] = (
-        "The core normalizer returns full canonical tables for programmatic use. "
-        "This upload endpoint returns limited previews only; nothing is persisted."
-    )
+    return result
+
+
+@router.get("/normalization-runs/{run_id}")
+def get_normalization_run(
+    run_id: UUID,
+    organization_id: str = Query(..., min_length=1, max_length=100),
+) -> dict[str, Any]:
+    """Return saved previews filtered by organization_id.
+
+    This query filter is not authentication. Do not expose this route to untrusted
+    clients until authenticated identity and tenant authorization are implemented.
+    """
+    try:
+        with session_scope() as session:
+            result = get_persisted_normalization_preview(
+                session=session,
+                run_id=str(run_id),
+                organization_id=organization_id,
+                preview_limit=MAX_PREVIEW_ROWS,
+                issue_limit=MAX_ISSUE_PREVIEW,
+            )
+    except DatabaseNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except SQLAlchemyError as exc:
+        logger.exception("Could not retrieve normalization run")
+        raise HTTPException(status_code=503, detail="Database query failed.") from exc
+
+    if result is None:
+        raise HTTPException(status_code=404, detail="Normalization run was not found.")
     return result

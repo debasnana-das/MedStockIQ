@@ -4,7 +4,7 @@
 
 - Python 3.11 or newer
 - Git
-- Docker Desktop / Docker Engine for local PostgreSQL (optional until database persistence is implemented)
+- Docker Desktop / Docker Engine for local PostgreSQL
 
 ## Create a local environment (Windows PowerShell)
 
@@ -13,10 +13,18 @@ py -3.11 -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
+Copy-Item .env.example .env
+```
+
+Start PostgreSQL and create tables before launching the API:
+
+```powershell
+docker compose up -d postgres
+alembic upgrade head
 uvicorn app.main:app --reload --app-dir backend
 ```
 
-Open `http://127.0.0.1:8000/health` to check the API process and `http://127.0.0.1:8000/docs` for the interactive OpenAPI page.
+Open `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/health/database`, and `http://127.0.0.1:8000/docs`.
 
 ## Try the file profiling endpoint
 
@@ -53,4 +61,6 @@ ruff check .
 docker compose up -d postgres
 ```
 
-The PostgreSQL service is provided for local development. The current API health route checks process health only; database connectivity and persistence will be added in a later phase.
+PostgreSQL persistence is opt-in on `POST /api/v1/normalize` via multipart form field `persist=true`. Preview is still the default. Include an explicit `organization_id` in `options_json`. Successful saves return `normalization_run_id`; retrieve a bounded preview at `GET /api/v1/normalization-runs/{run_id}?organization_id=...`. Each save is transactional; mappings, normalized records, quality issues, and transformation logs are stored, but original upload bytes are not.
+
+The supplied organization ID is only a query filter, not an authenticated identity. Keep this prototype local and use synthetic/sanitized data until authentication and real tenant authorization exist.

@@ -56,3 +56,8 @@ Files containing `DO_NOT_USE_AS_INPUT` are test oracles/labels and must never be
 Python, FastAPI, pandas, PostgreSQL, scikit-learn baselines, React (planned), and Docker for reproducible local development.
 
 See [Data Contract v1](docs/data_contract_v1.md) for the canonical schema.
+
+
+## PostgreSQL persistence workflow
+
+Normalization stays preview-only by default. Submit `persist=true` and an explicit organization ID in `options_json` to save the confirmed schema, normalized canonical tables, quality issues, and transformations in one database transaction. Uploaded file bytes are not stored. Run `docker compose up -d postgres` and `alembic upgrade head` for local setup. Saved previews are available through `GET /api/v1/normalization-runs/{run_id}?organization_id=...`. The organization parameter is a filter, not authentication; do not expose this prototype to untrusted clients until authentication and tenant authorization are implemented.

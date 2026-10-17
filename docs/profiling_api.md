@@ -55,6 +55,6 @@ For invoice types `purchase_invoice` and `outward_invoice`, a confirmed document
 
 ## 5. Current limitations and safety
 
-Normalization is stateless; no file, schema, or output is saved. The API response is a preview, not a downloadable normalized dataset. Invalid/missing values are reported as issues rather than silently imputed. No inventory-risk calculations, forecasts, or recommendations are run by this endpoint.
+Normalization remains preview-only by default. When `persist=true` is explicitly submitted with a configured database and organization ID, the run metadata, confirmed schema, normalized records, issues, and transformation traces are saved transactionally. Original file bytes are not stored. The API response is still a bounded preview, not a downloadable normalized dataset. Invalid/missing values are reported as issues rather than silently imputed. No inventory-risk calculations, forecasts, or recommendations are run by this endpoint.
 
-Until authentication, tenant isolation, retention controls, full-file validation, and production protections are implemented and tested, use synthetic/sanitized files locally. Do not expose the development API to the internet or use confidential live data.
+The organization ID required for run lookup is a query filter rather than authenticated identity. Until authentication, tenant authorization, retention controls, full-file validation, and production protections are implemented and tested, use synthetic/sanitized files locally. Do not expose the development API to the internet or use confidential live data.
