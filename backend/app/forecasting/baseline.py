@@ -170,8 +170,9 @@ def evaluate_demand_baselines(
     elif start > end:
         blockers.append("sales_history_start_date must be on or before sales_history_end_date.")
     if excluded_reasons:
-        warnings.append(
-            "Some retail-sale rows were excluded for missing or invalid product, date, quantity, or unit data."
+        excluded_total = sum(excluded_reasons.values())
+        blockers.append(
+            f"{excluded_total} retail-sale row(s) have missing or invalid product, date, quantity, or unit data; resolve these rows before forecasting."
         )
     if start and end and start <= end:
         outside = [row for row in valid_rows if not (start <= row["transaction_date"] <= end)]

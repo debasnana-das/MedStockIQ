@@ -109,3 +109,20 @@ def test_sales_outside_declared_window_blocks_report() -> None:
     report = _evaluate(result, days=42)
     assert report["status"] == "insufficient_data"
     assert any("outside the declared reporting window" in blocker for blocker in report["blockers"])
+
+
+def test_invalid_rows_in_declared_complete_export_block_forecasting() -> None:
+    result = _result(days=42)
+    result["tables"]["transactions"].append({
+        "transaction_id": "BAD-ROW",
+        "product_id": "P1",
+        "transaction_date": (START + timedelta(days=5)).isoformat(),
+        "transaction_type": "retail_sale",
+        "quantity": None,
+        "effective_quantity": None,
+        "quantity_unit": "pack",
+    })
+    report = _evaluate(result, days=42)
+    assert report["status"] == "insufficient_data"
+    assert report["forecasts"] == []
+    assert any("resolve these rows before forecasting" in blocker for blocker in report["blockers"])
