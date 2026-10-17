@@ -57,10 +57,12 @@ class ProfiledColumnReference(BaseModel):
     column_index: int = Field(ge=0)
     source_column: str = Field(min_length=1, max_length=200)
 
-    @field_validator("source_column", mode="before")
+    @field_validator("source_column")
     @classmethod
-    def trim_source_column(cls, value: object) -> object:
-        return value.strip() if isinstance(value, str) else value
+    def validate_source_column(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("source_column must not be blank.")
+        return value
 
 
 class ColumnMappingChoice(BaseModel):
