@@ -2,7 +2,6 @@ from app.main import app
 from app.schema.mapping import suggest_column_mapping
 from app.schema.profiler import profile_dataframe
 from fastapi.testclient import TestClient
-import pandas as pd
 import io
 
 
