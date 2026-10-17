@@ -561,26 +561,36 @@ def normalize_dataframe(
         if quantity_mapping:
             raw_quantity = raw_value(row_index, quantity_mapping)
             if is_composite_quantity:
-                try:
-                    quantity_value, composite_free = _composite_quantity(raw_quantity)
-                    free_value = composite_free
-                    transformations.append(
-                        {
-                            "row_index": row_index,
-                            "source_column": quantity_mapping.source_column,
-                            "rule": "split_quantity_and_free",
-                            "targets": ["quantity", "free_quantity"],
-                        }
-                    )
-                except ValueError as exc:
+                if _is_missing(raw_quantity) or not str(raw_quantity).strip():
                     add_issue(
-                        "invalid_composite_quantity",
+                        "missing_composite_quantity",
                         "error",
-                        str(exc),
+                        "The composite billed/free quantity is missing.",
                         row_index,
                         quantity_mapping.source_column,
                         "quantity",
                     )
+                else:
+                    try:
+                        quantity_value, composite_free = _composite_quantity(raw_quantity)
+                        free_value = composite_free
+                        transformations.append(
+                            {
+                                "row_index": row_index,
+                                "source_column": quantity_mapping.source_column,
+                                "rule": "split_quantity_and_free",
+                                "targets": ["quantity", "free_quantity"],
+                            }
+                        )
+                    except ValueError as exc:
+                        add_issue(
+                            "invalid_composite_quantity",
+                            "error",
+                            str(exc),
+                            row_index,
+                            quantity_mapping.source_column,
+                            "quantity",
+                        )
             else:
                 quantity_value = get_number(row_index, "quantity", required=True)
 
@@ -737,7 +747,14 @@ def normalize_dataframe(
             ]
             non_null_stock_values = [value for _, value in stock_values if value is not None]
             units = {mapping.quantity_unit for mapping, _ in stock_values}
-            if len(units) > 1:
+            if len(stock_values) > 1 and len(non_null_stock_values) != len(stock_values):
+                add_issue(
+                    "incomplete_redundant_stock_fields",
+                    "error",
+                    "Multiple stock fields were mapped, but at least one is missing or invalid; no snapshot was created.",
+                    row_index,
+                )
+            elif len(units) > 1:
                 add_issue(
                     "conflicting_stock_units",
                     "error",

@@ -339,3 +339,44 @@ def test_month_year_format_is_restricted_to_expiry_date() -> None:
                 "date_format": "MM/YY",
             }],
         })
+
+
+
+def test_empty_composite_quantity_is_reported() -> None:
+    frame = pd.DataFrame(
+        [["Synthetic A", "Maker A", 300490, "10'S", "B001", "03/30", None, "25.5", "40", "13/10/2026", "INV-001"]],
+        columns=[c.source_column for c in _confirmed_schema().profiled_columns],
+    )
+    result = normalize_dataframe(
+        frame, _confirmed_schema(), NormalizationOptions(document_type="purchase_invoice")
+    )
+    assert result["summary"]["transaction_count"] == 0
+    assert any(issue["code"] == "missing_composite_quantity" for issue in result["issues"])
+
+
+def test_incomplete_redundant_stock_fields_do_not_create_snapshot() -> None:
+    schema = SchemaConfirmationRequest.model_validate({
+        "profiled_columns": [
+            {"column_index": 0, "source_column": "PRODUCT"},
+            {"column_index": 1, "source_column": "BATCH"},
+            {"column_index": 2, "source_column": "CURRENT STOCK"},
+            {"column_index": 3, "source_column": "STOCK ON HAND"},
+        ],
+        "mappings": [
+            {"column_index": 0, "source_column": "PRODUCT", "action": "map", "canonical_field": "product_name"},
+            {"column_index": 1, "source_column": "BATCH", "action": "map", "canonical_field": "batch_code"},
+            {"column_index": 2, "source_column": "CURRENT STOCK", "action": "map", "canonical_field": "current_quantity", "quantity_unit": "pack"},
+            {"column_index": 3, "source_column": "STOCK ON HAND", "action": "map", "canonical_field": "quantity_on_hand", "quantity_unit": "pack"},
+        ],
+    })
+    frame = pd.DataFrame(
+        [["Synthetic A", "B001", None, 4]],
+        columns=["PRODUCT", "BATCH", "CURRENT STOCK", "STOCK ON HAND"],
+    )
+    result = normalize_dataframe(
+        frame,
+        schema,
+        NormalizationOptions(document_type="inventory_report", snapshot_date=date(2026, 10, 1)),
+    )
+    assert result["summary"]["inventory_snapshot_count"] == 0
+    assert any(issue["code"] == "incomplete_redundant_stock_fields" for issue in result["issues"])
