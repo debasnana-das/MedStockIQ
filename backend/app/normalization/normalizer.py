@@ -11,14 +11,12 @@ import math
 import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
-from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.schema.confirmation import (
-    DATE_FIELDS,
     MONTH_YEAR_FORMATS,
     ColumnMappingChoice,
     SchemaConfirmationRequest,
@@ -201,11 +199,6 @@ def normalize_dataframe(
         raise ValueError("Uploaded file column count differs from the confirmed profile.")
 
     mappings = _field_map(confirmation)
-    mapping_by_index = {
-        mapping.column_index: mapping
-        for mapping in confirmation.mappings
-        if mapping.action == "map"
-    }
     issues: list[dict[str, Any]] = []
     transformations: list[dict[str, Any]] = []
     products: list[dict[str, Any]] = []
