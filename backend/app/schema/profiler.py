@@ -5,15 +5,14 @@ from __future__ import annotations
 from typing import Any
 
 import pandas as pd
+from app.ingestion.readers import MAX_PROFILE_ROWS
+from app.schema.mapping import suggest_column_mapping
 from pandas.api.types import (
     is_bool_dtype,
     is_datetime64_any_dtype,
     is_integer_dtype,
     is_numeric_dtype,
 )
-
-from app.ingestion.readers import MAX_PROFILE_ROWS
-from app.schema.mapping import suggest_column_mapping
 
 
 DATE_FIELDS = {"expiry_date", "manufacturing_date", "transaction_date", "document_date"}
@@ -66,7 +65,7 @@ def profile_dataframe(frame: pd.DataFrame, truncated: bool = False) -> dict[str,
         mapping = suggest_column_mapping(source_name, samples)
         canonical_field = mapping["canonical_field"]
         missing_count = int(series.isna().sum())
-        total_rows = int(len(frame.index))
+        total_rows = len(frame.index)
         missing_percent = round(missing_count * 100 / total_rows, 2) if total_rows else 0.0
 
         column_profiles.append(
@@ -99,8 +98,8 @@ def profile_dataframe(frame: pd.DataFrame, truncated: bool = False) -> dict[str,
         warnings.append("No recognizable quantity or stock column was found.")
 
     return {
-        "row_count_profiled": int(len(frame.index)),
-        "column_count": int(len(frame.columns)),
+        "row_count_profiled": len(frame.index),
+        "column_count": len(frame.columns),
         "duplicate_rows_profiled": int(frame.duplicated().sum()),
         "profiling_row_limit": MAX_PROFILE_ROWS,
         "truncated": truncated,
