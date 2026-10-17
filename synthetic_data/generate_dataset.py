@@ -96,7 +96,7 @@ def _demand(spec: ProductSpec, day: date, rng: random.Random) -> int:
         elif day.month in {6, 7, 8}:
             multiplier = 0.8
     mean = spec.mean_demand * multiplier
-    return max(0, int(round(rng.gauss(mean, max(0.5, math.sqrt(mean) * 0.55))))
+    return max(0, int(round(rng.gauss(mean, max(0.5, math.sqrt(mean) * 0.55)))))
 
 
 def _receipts(spec: ProductSpec, start: date, as_of: date) -> list[dict[str, Any]]:
