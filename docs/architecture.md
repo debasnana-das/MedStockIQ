@@ -36,3 +36,10 @@ Upload → parse/profile → propose schema mappings → user confirms → norma
 ## Initial deployment shape
 
 Start as a modular monolith: one FastAPI application with separate Python modules. Do not introduce microservices, RAG, queues, or a vector database until a verified requirement justifies them.
+
+
+## Implemented persistence slice
+
+The current backend can persist normalization runs when the caller explicitly submits `persist=true` to `POST /api/v1/normalize`. It stores the confirmed mapping and run options, summary, products, batches, source-document metadata, transactions, inventory snapshots, quality issues, and transformation traces in one database transaction. The initial schema is versioned with Alembic. Original uploaded bytes are deliberately not stored by this workflow.
+
+Saved runs can be reviewed through `GET /api/v1/normalization-runs/{run_id}?organization_id=...`, which returns bounded previews. The organization parameter is only a caller-supplied query filter; it does not prove identity or provide tenant authorization. Production authentication, retention controls, backup/restore, and real authorization remain future work.

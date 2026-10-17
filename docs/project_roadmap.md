@@ -19,6 +19,14 @@
 - [ ] Preserve unmapped columns and transformation metadata.
 - [x] Add baseline regression tests for both observed invoice layouts; additional label variations and field semantics remain to be validated.
 
+## Phase 2.5 — PostgreSQL persistence and workflow integration
+- [x] Add SQLAlchemy models for run metadata, canonical tables, issues, and transformation traces.
+- [x] Add the initial Alembic migration; verify migration execution in CI.
+- [x] Add opt-in transactional persistence to normalization; keep preview-only as default.
+- [x] Add bounded saved-run retrieval filtered by organization ID and document that this is not authentication.
+- [x] Test transaction rollback, persisted previews, API workflow, SQLite migration, and PostgreSQL round-trip in CI.
+- [ ] Add authenticated user identity and server-enforced tenant authorization before shared deployment.
+
 ## Phase 3 — Data quality and deterministic analysis
 - [ ] Implement date, quantity, unit, duplicate and monetary validation.
 - [ ] Implement data-readiness checks for each risk module.

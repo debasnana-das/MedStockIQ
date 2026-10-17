@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 from datetime import date
 from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event, func, select
+from sqlalchemy import create_engine, delete, event, func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
@@ -264,3 +265,41 @@ def test_normalize_endpoint_can_persist_and_retrieve_a_run(
         params={"organization_id": "ORG-WRONG"},
     )
     assert wrong_org.status_code == 404
+
+
+
+def test_postgresql_persistence_round_trip_when_enabled() -> None:
+    database_url = os.getenv("DATABASE_URL", "")
+    if (
+        os.getenv("MEDSTOCKIQ_RUN_POSTGRES_INTEGRATION") != "1"
+        or not database_url.startswith("postgresql")
+    ):
+        pytest.skip("PostgreSQL integration test is enabled only by the CI PostgreSQL service.")
+
+    engine = create_engine(database_url, pool_pre_ping=True)
+    run_id = None
+    try:
+        with Session(engine) as session:
+            run_id = persist_normalization_result(
+                session,
+                _full_result("ORG-PG-CI"),
+                _schema(),
+                _options("ORG-PG-CI"),
+                "synthetic-postgres.csv",
+                "csv",
+                512,
+            )
+        with Session(engine) as session:
+            preview = get_persisted_normalization_preview(
+                session, run_id, "ORG-PG-CI", preview_limit=10, issue_limit=50
+            )
+        assert preview is not None
+        assert preview["previews"]["products"][0]["product_name"] == "Synthetic Medicine"
+        assert preview["previews"]["transactions"][0]["quantity"] == 3.0
+    finally:
+        if run_id is not None:
+            with engine.begin() as connection:
+                connection.execute(
+                    delete(NormalizationRun).where(NormalizationRun.run_id == run_id)
+                )
+        engine.dispose()
