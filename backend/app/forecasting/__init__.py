@@ -1,2 +1,1 @@
-"""Demand forecasting components."""
-
+"""Reproducible demand forecasting baselines."""
