@@ -1,2 +1,1 @@
-"""Data quality validation."""
-
+"""Data quality and analysis readiness evaluation."""
