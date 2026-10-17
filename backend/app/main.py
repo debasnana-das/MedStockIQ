@@ -1,3 +1,4 @@
+from app.api.profiling import router as profiling_router
 from fastapi import FastAPI
 
 app = FastAPI(
@@ -5,6 +6,8 @@ app = FastAPI(
     description="API scaffold for inventory intelligence workflows.",
     version="0.1.0",
 )
+
+app.include_router(profiling_router)
 
 
 @app.get("/health", tags=["system"])
