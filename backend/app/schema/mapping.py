@@ -90,7 +90,6 @@ def suggest_column_mapping(
         }
 
     canonical, confidence, requires_confirmation, rationale, transaction_hint = match
-    samples = sample_values or []
     if canonical in {"expiry_date", "manufacturing_date", "transaction_date", "document_date"}:
         rationale = f"{rationale} Raw values will be retained until date parsing is confirmed."
         requires_confirmation = True
