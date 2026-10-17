@@ -56,7 +56,10 @@ def persist_normalization_result(
     """
     run_id = str(uuid4())
     tables = result.get("tables", {})
-    with session.begin():
+    # Organization checks may already have opened a request transaction. Use a
+    # savepoint inside that transaction; otherwise own a transaction for direct callers.
+    transaction = session.begin_nested() if session.in_transaction() else session.begin()
+    with transaction:
         session.add(
             NormalizationRun(
                 run_id=run_id,
