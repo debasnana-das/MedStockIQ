@@ -158,8 +158,9 @@ async def normalize_uploaded_file(
         result["normalization_run_id"] = run_id
         result["persistence"] = "saved_to_postgresql"
         result["note"] = (
-            "Normalized entities, confirmed mapping, summary, issues and transformation traces "
-            "were saved transactionally. The original uploaded file bytes were not stored."
+            "Normalized entities, confirmed mapping, quality/readiness findings, inventory arithmetic, "
+            "expiry alerts and transformation traces were saved transactionally. Original upload bytes "
+            "were not stored."
         )
     else:
         result["note"] = (

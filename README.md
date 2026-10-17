@@ -78,3 +78,8 @@ Normalization stays preview-only by default. Requests require a bearer token. Su
 ## Data quality and analysis readiness
 
 Normalization responses include a deterministic `quality_report` with grouped quality findings, key-field coverage, and independent readiness statuses for expiry monitoring, demand forecasting, overstock review, and stock-out review. It is persisted alongside saved normalization runs. The readiness layer reports missing evidence rather than guessing: invoices alone are not treated as retail sell-through or current stock, and stock-out analysis remains blocked until replenishment timing data is available. This step assesses readiness only; it does not yet calculate inventory risk or forecast demand. See [API and readiness details](docs/profiling_api.md).
+
+
+## Inventory arithmetic and expiry monitoring
+
+Normalization's `quality_report.inventory_analysis` contains current-position previews, stock-snapshot validation findings, snapshot-to-movement reconciliation results, and positive-stock batch expiry alerts for fixed 30/90/180-day windows. Current stock comes from dated inventory snapshots only—invoice quantities are never assumed to be on hand. The service omits ambiguous positions, marks stale/unknown stock basis as provisional, and labels any calculated MRP value as indicative retail-price exposure rather than purchase cost or expected expiry loss. This remains run-local analysis and does not yet maintain an inventory ledger across uploads.

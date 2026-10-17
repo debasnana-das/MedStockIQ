@@ -73,7 +73,6 @@ def calculate_inventory_arithmetic(
     currency_code: str | None = None,
     as_of_date: date | None = None,
     stale_after_days: int = DEFAULT_STALE_AFTER_DAYS,
-    expiry_alert_windows: tuple[int, ...] = EXPIRY_ALERT_WINDOWS,
 ) -> dict[str, Any]:
     """Summarize dated inventory positions, reconcile snapshots where possible, and alert on expiry.
 
@@ -84,7 +83,7 @@ def calculate_inventory_arithmetic(
     """
     as_of = as_of_date or date.today()
     stale_days = max(0, int(stale_after_days))
-    windows = tuple(sorted({int(x) for x in expiry_alert_windows if int(x) >= 0}))
+    windows = EXPIRY_ALERT_WINDOWS
     tables = normalization_result.get("tables") or {}
     products = list(tables.get("products") or [])
     batches = list(tables.get("batches") or [])
@@ -397,8 +396,9 @@ def calculate_inventory_arithmetic(
             "indicative_mrp_value": indicative_value,
             "currency_code": price_currency,
             "value_basis": (
-                "quantity_on_hand × latest dated batch-linked MRP with matching unit; "
-                "indicative retail-price exposure only, not purchase cost, expiry loss, or recoverable value"
+                "Assumes the mapped MRP is per the declared transaction quantity unit; "
+                "quantity_on_hand × latest dated same-batch MRP; indicative retail-price exposure "
+                "only, not purchase cost, expiry loss, or recoverable value"
             ) if indicative_value is not None else None,
             "confidence": "provisional" if provisional_reasons else "based_on_available_records",
             "provisional_reasons": provisional_reasons,

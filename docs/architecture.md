@@ -48,3 +48,8 @@ Authentication and tenant-access baseline: accounts are stored with Argon2 passw
 ## Data-quality and analysis-readiness engine
 
 After normalization, a deterministic quality layer groups normalization issues, measures key-field coverage, flags possible duplicate transaction signatures and suspicious numeric ranges, and reports analysis-specific blockers. Its report is returned in the API response and persisted with saved normalization runs. Readiness is assessed independently for expiry monitoring, demand forecasting, overstock review, and stock-out review; a module lacking required evidence stays `insufficient_data`. Readiness does not mean an inventory risk score or forecast has already been calculated or statistically validated.
+
+
+## Inventory arithmetic and expiry alerts
+
+The `app.inventory.arithmetic` service selects the latest valid dated snapshot for each product/batch position, excludes future snapshots, flags stale or conflicting records, and reconciles adjacent snapshots against movements when their dates, quantity units and movement types permit. It never patches observed stock values. Batch expiry alerts require positive stock in a batch with a valid normalized expiry. Indicative MRP exposure is returned only when price, unit and currency evidence is unambiguous, and is explicitly not labelled cost or expected loss. The calculation currently runs per normalization request; it does not maintain a longitudinal inventory ledger across separate uploads.

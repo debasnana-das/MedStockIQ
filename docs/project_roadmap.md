@@ -33,14 +33,16 @@
 - [x] Add deterministic findings from normalization issues, key-field coverage, possible duplicates, ignored columns, unknown stock basis, and suspicious tax/discount values.
 - [x] Implement per-module readiness checks with explicit blockers and transparent sales-history guardrails.
 - [ ] Expand date, unit and cross-document consistency rules as more source formats and authorized sanitized files become available.
-- [ ] Implement inventory arithmetic and basic expiry-date alerts.
-- [ ] Return explicit insufficient_data statuses where appropriate.
+- [x] Implement dated snapshot selection, duplicate/conflict/unit validation, basic snapshot-to-movement reconciliation, and batch-level expiry alerts.
+- [x] Return explicit insufficient_data statuses and provisional-value explanations where evidence is insufficient.
+- [ ] Reconcile inventory history across multiple persisted runs only after a cross-upload ledger and identity-matching policy are defined.
 
 ## Phase 4 — Forecasting and risk analysis
 - [ ] Create simple time-series baselines before selecting advanced models.
 - [ ] Use chronological train/validation/test splits to avoid leakage.
 - [ ] Evaluate forecast error and alert usefulness.
-- [ ] Build overstock/expiry findings with evidence, assumptions and uncertainty.
+- [x] Provide basic batch expiry alerts with evidence, severity windows and explicit provisional MRP-exposure semantics.
+- [ ] Build overstock findings and validated expiry-loss estimates with evidence, assumptions and uncertainty.
 - [ ] Add stock-out only when current inventory and replenishment data are available.
 
 ## Phase 5 — Product interface
