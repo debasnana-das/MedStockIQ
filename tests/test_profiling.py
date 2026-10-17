@@ -1,9 +1,6 @@
 import io
 
 import pandas as pd
-from fastapi.testclient import TestClient
-
-from app.main import app
 from app.schema.mapping import suggest_column_mapping
 from app.schema.profiler import profile_dataframe
 
@@ -44,8 +41,7 @@ def test_profile_reports_missing_values_and_duplicate_rows() -> None:
     assert qty["missing_count"] == 1
 
 
-def test_profile_endpoint_accepts_csv_in_memory() -> None:
-    client = TestClient(app)
+def test_profile_endpoint_accepts_csv_in_memory(client) -> None:
     payload = b"PRODUCT,BATCH,EXP,QTY\nSYNTHETIC A,B001,03/30,4\n"
     response = client.post(
         "/api/v1/profile",
@@ -61,8 +57,7 @@ def test_profile_endpoint_accepts_csv_in_memory() -> None:
     } == {"PRODUCT", "BATCH", "EXP", "QTY"}
 
 
-def test_profile_endpoint_rejects_unsupported_files() -> None:
-    client = TestClient(app)
+def test_profile_endpoint_rejects_unsupported_files(client) -> None:
     response = client.post(
         "/api/v1/profile",
         files={"file": ("invoice.pdf", b"fake-pdf-bytes", "application/pdf")},

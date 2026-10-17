@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Iterator
 
 from dotenv import load_dotenv
+from fastapi import HTTPException
 from sqlalchemy import Engine, create_engine, event, text
 from sqlalchemy.orm import Session
 
@@ -54,6 +55,20 @@ def get_engine() -> Engine:
 def session_scope() -> Iterator[Session]:
     """Provide a session, roll back failures, and always close it."""
     with Session(get_engine()) as session:
+        try:
+            yield session
+        except Exception:
+            session.rollback()
+            raise
+
+
+def get_db_session() -> Iterator[Session]:
+    """FastAPI dependency with rollback on request errors and guaranteed cleanup."""
+    try:
+        engine = get_engine()
+    except DatabaseNotConfigured as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    with Session(engine) as session:
         try:
             yield session
         except Exception:

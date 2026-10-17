@@ -6,19 +6,31 @@ MedStockIQ is an early-stage platform that profiles business files, suggests can
 
 ## Current working slice
 
-- `GET /health` — API process health check.
-- `POST /api/v1/profile` — profiles CSV/XLSX files up to 10 MB and 20,000 rows, suggesting canonical mappings without persisting uploads.
-- `GET /api/v1/schema/fields` — lists canonical fields and required mapping metadata.
-- `POST /api/v1/schema/confirm` — validates explicit mapping/ignore decisions for every profiled column.
-- `POST /api/v1/normalize` — applies the confirmed mapping to a matching CSV/XLSX upload and returns canonical table counts and limited previews without persistence.
+- `GET /health` and `GET /health/database` — process and database health checks.
+- `POST /api/v1/auth/register` and `POST /api/v1/auth/token` — create an account or exchange credentials for a short-lived bearer token.
+- `POST /api/v1/organizations` — create a tenant; the authenticated creator becomes its owner.
+- `GET /api/v1/organizations` — list only the caller's organization memberships.
+- `POST /api/v1/organizations/{organization_id}/members` — owners/admins grant access to an existing account with a role.
+- `DELETE /api/v1/organizations/{organization_id}/members/{user_id}` — revoke one user's membership without deleting the account.
+- `POST /api/v1/profile` — profiles CSV/XLSX files up to 10 MB and 20,000 rows, suggesting canonical mappings without persisting uploads (bearer token required).
+- `GET /api/v1/schema/fields` — lists canonical fields and required mapping metadata (bearer token required).
+- `POST /api/v1/schema/confirm` — validates explicit mapping/ignore decisions for every profiled column (bearer token required).
+- `POST /api/v1/normalize` — applies the confirmed mapping to a matching CSV/XLSX upload and returns canonical table counts and limited previews; saving requires a writer role in the selected organization.
 - `normalize_dataframe` — reusable Python service returning full canonical Product, Batch, SourceDocument, Transaction and InventorySnapshot records, including transformation logs and data-quality issues.
 - Synthetic data generator for fictional products, batches, transactions, snapshots, replenishment orders and separate test-only evaluation truth.
 
 ## Canonical normalization boundaries
 
-Mappings are not guessed again during normalization. Quantity units, movement types, date formats, and composite quantity splitting must be supplied explicitly. Month/year expiry such as `03/30` requires the explicit convention `month_end` before normalization. Invalid values and conflicting batch/product attributes are surfaced as issues. This stage does not perform forecasts or risk scoring and does not persist input or output.
+Mappings are not guessed again during normalization. Quantity units, movement types, date formats, and composite quantity splitting must be supplied explicitly. Month/year expiry such as `03/30` requires the explicit convention `month_end` before normalization. Invalid values and conflicting batch/product attributes are surfaced as issues. The normalizer does not perform forecasts or risk scoring; the API persistence path is opt-in and requires an authenticated organization writer.
 
-PDF/OCR, a visual confirmation UI, database persistence, risk calculations, forecasting, reporting, chat, authentication, tenant isolation and production deployment remain future work.
+PDF/OCR, a visual confirmation UI, risk calculations, forecasting, reporting, chat, and production deployment remain future work.
+
+## Authentication and tenant access
+
+All API routes under `/api/v1` except registration and login require `Authorization: Bearer <access_token>`. Passwords are hashed with Argon2 and access tokens expire after 30 minutes. New accounts receive no organization membership automatically. A user creates an organization and becomes its owner; an owner/admin can add already-registered users as `admin`, `member`, or `viewer` (admins may only grant `member` or `viewer`). Only owners/admins can manage membership or revoke access. The final owner cannot be removed. Owners, admins, and members may persist normalization runs; viewers have read-only organization access.
+
+Tenant IDs are checked against the authenticated account's active membership on the server. Run lookup requires membership and still uses the organization ID as a filter. The prototype does not yet include rate limiting, MFA, account recovery, refresh tokens, or a full production security review.
+
 
 ## Quick start
 
@@ -60,4 +72,4 @@ See [Data Contract v1](docs/data_contract_v1.md) for the canonical schema.
 
 ## PostgreSQL persistence workflow
 
-Normalization stays preview-only by default. Submit `persist=true` and an explicit organization ID in `options_json` to save the confirmed schema, normalized canonical tables, quality issues, and transformations in one database transaction. Uploaded file bytes are not stored. Run `docker compose up -d postgres` and `alembic upgrade head` for local setup. Saved previews are available through `GET /api/v1/normalization-runs/{run_id}?organization_id=...`. The organization parameter is a filter, not authentication; do not expose this prototype to untrusted clients until authentication and tenant authorization are implemented.
+Normalization stays preview-only by default. Requests require a bearer token. Submit `persist=true` and an organization ID in `options_json` only for an organization where the authenticated user has a writer role; the server checks membership rather than trusting the ID. Saves are transactional and uploaded file bytes are not stored. Run `docker compose up -d postgres` and `alembic upgrade head` for local setup. Saved previews are available through `GET /api/v1/normalization-runs/{run_id}?organization_id=...`, after the server verifies tenant membership. This is an early-stage security layer, not production certification; use synthetic or sanitized data and do not expose the API publicly.

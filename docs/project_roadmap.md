@@ -23,9 +23,11 @@
 - [x] Add SQLAlchemy models for run metadata, canonical tables, issues, and transformation traces.
 - [x] Add the initial Alembic migration; verify migration execution in CI.
 - [x] Add opt-in transactional persistence to normalization; keep preview-only as default.
-- [x] Add bounded saved-run retrieval filtered by organization ID and document that this is not authentication.
+- [x] Add bounded saved-run retrieval after authenticated tenant-membership checks.
 - [x] Test transaction rollback, persisted previews, API workflow, SQLite migration, and PostgreSQL round-trip in CI.
-- [ ] Add authenticated user identity and server-enforced tenant authorization before shared deployment.
+- [x] Add authenticated user identity, organization membership, roles, and server-enforced tenant authorization.
+- [x] Add access-controlled normalization-run retrieval and writer-only persistence.
+- [ ] Add rate limiting, MFA/account recovery, token refresh/revocation strategy, audit logging, retention controls, and deployment security before production.
 
 ## Phase 3 — Data quality and deterministic analysis
 - [ ] Implement date, quantity, unit, duplicate and monetary validation.
@@ -55,7 +57,8 @@
 - [ ] Document limitations and measured outcomes honestly.
 
 ## Phase 7 — Production hardening
-- [ ] Authentication, tenant isolation and role-based access.
+- [x] Baseline authentication, tenant isolation and role-based access.
+- [ ] Production-grade rate limiting, MFA, audit logging, secret management and account recovery.
 - [ ] Private file storage, encryption and retention/deletion controls.
 - [ ] Audit logging and reproducible analysis versions.
 - [ ] Deployment, backups, monitoring and operational documentation.

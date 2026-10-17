@@ -5,6 +5,7 @@ import logging
 from fastapi import FastAPI, HTTPException
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.api.auth import router as auth_router
 from app.api.normalization import router as normalization_router
 from app.api.profiling import router as profiling_router
 from app.api.schema_confirmation import router as schema_confirmation_router
@@ -18,6 +19,7 @@ app = FastAPI(
     version="0.2.0",
 )
 
+app.include_router(auth_router)
 app.include_router(profiling_router)
 app.include_router(schema_confirmation_router)
 app.include_router(normalization_router)

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-from contextlib import contextmanager
 import os
 from datetime import date
-from typing import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -12,10 +10,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.api import normalization as normalization_api
 from app.db.base import Base
-from app.db.models import NormalizationRun
+from app.db.models import NormalizationRun, Organization, OrganizationMembership, UserAccount
 from app.db.persistence import get_persisted_normalization_preview, persist_normalization_result
+from app.db.session import get_db_session
+from app.security import create_access_token
 from app.main import app
 from app.normalization.normalizer import NormalizationOptions
 from app.schema.confirmation import SchemaConfirmationRequest
@@ -228,43 +227,78 @@ def test_failed_persistence_rolls_back_the_entire_run(database_engine) -> None:
 def test_normalize_endpoint_can_persist_and_retrieve_a_run(
     database_engine, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    @contextmanager
-    def test_session_scope() -> Iterator[Session]:
+    monkeypatch.setenv(
+        "AUTH_TOKEN_SECRET",
+        "test-only-secret-for-normalization-api-authentication-123456789",
+    )
+    user_id = "00000000-0000-4000-8000-000000000001"
+    with Session(database_engine) as session:
+        session.add(UserAccount(
+            user_id=user_id,
+            email="api-owner@example.test",
+            password_hash="not-used-by-token-auth-test",
+            is_active=True,
+        ))
+        session.add(Organization(
+            organization_id="ORG-API-TEST",
+            display_name="API Test Organization",
+            is_active=True,
+        ))
+        session.add(OrganizationMembership(
+            organization_id="ORG-API-TEST",
+            user_id=user_id,
+            role="owner",
+        ))
+        session.commit()
+
+    def test_db_session():
         with Session(database_engine) as session:
-            yield session
+            try:
+                yield session
+            except Exception:
+                session.rollback()
+                raise
 
-    monkeypatch.setattr(normalization_api, "session_scope", test_session_scope)
-    client = TestClient(app)
-    schema = _schema()
+    app.dependency_overrides[get_db_session] = test_db_session
+    try:
+        token, _ = create_access_token(user_id)
+        client = TestClient(app)
+        headers = {"Authorization": f"Bearer {token}"}
+        schema = _schema()
 
-    response = client.post(
-        "/api/v1/normalize",
-        data={
-            "confirmed_schema_json": schema.model_dump_json(),
-            "options_json": '{"organization_id":"ORG-API-TEST","document_type":"unknown"}',
-            "persist": "true",
-        },
-        files={"file": ("synthetic.csv", b"PRODUCT\nSynthetic API Product\n", "text/csv")},
-    )
+        response = client.post(
+            "/api/v1/normalize",
+            headers=headers,
+            data={
+                "confirmed_schema_json": schema.model_dump_json(),
+                "options_json": '{"organization_id":"ORG-API-TEST","document_type":"unknown"}',
+                "persist": "true",
+            },
+            files={"file": ("synthetic.csv", b"PRODUCT\nSynthetic API Product\n", "text/csv")},
+        )
 
-    assert response.status_code == 200, response.text
-    body = response.json()
-    assert body["persistence"] == "saved_to_postgresql"
-    assert body["normalization_run_id"]
-    assert body["previews"]["products"][0]["product_name"] == "Synthetic API Product"
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["persistence"] == "saved_to_postgresql"
+        assert body["normalization_run_id"]
+        assert body["previews"]["products"][0]["product_name"] == "Synthetic API Product"
 
-    retrieved = client.get(
-        f"/api/v1/normalization-runs/{body['normalization_run_id']}",
-        params={"organization_id": "ORG-API-TEST"},
-    )
-    assert retrieved.status_code == 200, retrieved.text
-    assert retrieved.json()["previews"]["products"][0]["product_name"] == "Synthetic API Product"
+        retrieved = client.get(
+            f"/api/v1/normalization-runs/{body['normalization_run_id']}",
+            params={"organization_id": "ORG-API-TEST"},
+            headers=headers,
+        )
+        assert retrieved.status_code == 200, retrieved.text
+        assert retrieved.json()["previews"]["products"][0]["product_name"] == "Synthetic API Product"
 
-    wrong_org = client.get(
-        f"/api/v1/normalization-runs/{body['normalization_run_id']}",
-        params={"organization_id": "ORG-WRONG"},
-    )
-    assert wrong_org.status_code == 404
+        wrong_org = client.get(
+            f"/api/v1/normalization-runs/{body['normalization_run_id']}",
+            params={"organization_id": "ORG-WRONG"},
+            headers=headers,
+        )
+        assert wrong_org.status_code == 404
+    finally:
+        app.dependency_overrides.pop(get_db_session, None)
 
 
 

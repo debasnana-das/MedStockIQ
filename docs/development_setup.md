@@ -14,9 +14,12 @@ py -3.11 -m venv .venv
 python -m pip install --upgrade pip
 pip install -e ".[dev]"
 Copy-Item .env.example .env
+python -c "import secrets; print(secrets.token_urlsafe(48))"
 ```
 
-Start PostgreSQL and create tables before launching the API:
+Copy the generated random value into `AUTH_TOKEN_SECRET` in `.env`, replacing the example placeholder. Keep `.env` private and never commit it. Authentication fails closed when this secret is missing, too short, or still contains the example placeholder.
+
+Start PostgreSQL and create all database tables:
 
 ```powershell
 docker compose up -d postgres
@@ -26,17 +29,19 @@ uvicorn app.main:app --reload --app-dir backend
 
 Open `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/health/database`, and `http://127.0.0.1:8000/docs`.
 
-## Try the file profiling endpoint
+## Register, create an organization, and upload a file
 
-The first upload endpoint accepts CSV or XLSX up to 10 MB and profiles no more than 20,000 rows. It suggests mappings but does not normalize records, run inventory-risk calculations, store the file, or call an LLM.
+Registration and login are public. All other `/api/v1` endpoints require a bearer access token. Passwords must be 12–128 characters; successful login/register responses contain an access token valid for 30 minutes.
 
 ```powershell
-curl.exe -X POST "http://127.0.0.1:8000/api/v1/profile" -F "file=@sample.csv"
+$account = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/auth/register" -ContentType "application/json" -Body (@{email="you@example.com"; password="use-a-long-unique-password"} | ConvertTo-Json)
+$headers = @{ Authorization = "Bearer $($account.access_token)" }
+$org = Invoke-RestMethod -Method Post -Uri "http://127.0.0.1:8000/api/v1/organizations" -Headers $headers -ContentType "application/json" -Body (@{display_name="Local Test Pharmacy"} | ConvertTo-Json)
+$org.organization_id
+curl.exe -H "Authorization: Bearer $($account.access_token)" -X POST "http://127.0.0.1:8000/api/v1/profile" -F "file=@sample.csv"
 ```
 
-You can also upload a file from the `/docs` page. Use synthetic or sanitized data only during development; the current prototype has no authentication or tenant access controls and is not ready for public deployment with business-confidential files.
-
-See [Profiling API](profiling_api.md) for response fields and current limitations.
+The account that creates an organization becomes its owner. To grant access, the invitee must register first; an owner or admin then calls `POST /api/v1/organizations/{organization_id}/members` with the invitee's email and a role (`admin`, `member`, or `viewer`). Admins can grant only `member` and `viewer`. Owners/admins can manage memberships; owners/admins/members can save normalization runs. Viewers cannot write. An account has no organization data access merely because it registered or knows an organization ID.
 
 ## Generate synthetic data
 
@@ -55,12 +60,8 @@ pytest
 ruff check .
 ```
 
-## Database
+## Persistence and remaining security limits
 
-```powershell
-docker compose up -d postgres
-```
+Start PostgreSQL using `docker compose up -d postgres`; apply migrations with `alembic upgrade head`. Normalization remains preview-only unless the caller sets `persist=true` and selects an organization where they have a writer role. The server validates that membership. Saved previews are returned only after membership is verified; the organization query parameter alone grants no access. Original upload bytes are not stored by the normalization workflow.
 
-PostgreSQL persistence is opt-in on `POST /api/v1/normalize` via multipart form field `persist=true`. Preview is still the default. Include an explicit `organization_id` in `options_json`. Successful saves return `normalization_run_id`; retrieve a bounded preview at `GET /api/v1/normalization-runs/{run_id}?organization_id=...`. Each save is transactional; mappings, normalized records, quality issues, and transformation logs are stored, but original upload bytes are not.
-
-The supplied organization ID is only a query filter, not an authenticated identity. Keep this prototype local and use synthetic/sanitized data until authentication and real tenant authorization exist.
+This is a security baseline for controlled development, not a production-ready identity service. Rate limiting, MFA, account recovery, refresh tokens, dedicated secret management, detailed audit logging, HTTPS/proxy hardening, retention/deletion workflows, and a full security review remain outstanding. Use synthetic or sanitized data only and do not expose the prototype publicly.

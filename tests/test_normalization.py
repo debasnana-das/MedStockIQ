@@ -2,13 +2,8 @@ from datetime import date
 
 import pandas as pd
 import pytest
-from fastapi.testclient import TestClient
-
-from app.main import app
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe, _parse_number
 from app.schema.confirmation import SchemaConfirmationRequest
-
-client = TestClient(app)
 
 
 def _confirmed_schema() -> SchemaConfirmationRequest:
@@ -180,7 +175,7 @@ def test_schema_requires_expiry_convention_for_month_year() -> None:
         SchemaConfirmationRequest.model_validate(payload)
 
 
-def test_normalize_endpoint_returns_preview_and_does_not_claim_persistence() -> None:
+def test_normalize_endpoint_returns_preview_and_does_not_claim_persistence(client) -> None:
     schema = _confirmed_schema()
     payload = schema.model_dump(mode="json")
     csv_bytes = (
@@ -193,7 +188,7 @@ def test_normalize_endpoint_returns_preview_and_does_not_claim_persistence() -> 
         "/api/v1/normalize",
         data={
             "confirmed_schema_json": json.dumps(payload),
-            "options_json": json.dumps({"organization_id": "ORG-TEST", "document_type": "purchase_invoice"}),
+            "options_json": json.dumps({"document_type": "purchase_invoice"}),
         },
         files={"file": ("synthetic.csv", csv_bytes, "text/csv")},
     )

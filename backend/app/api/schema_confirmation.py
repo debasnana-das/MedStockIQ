@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
+
+from app.security import AuthenticatedUser, get_current_principal
 
 from app.schema.confirmation import (
     CANONICAL_FIELD_DESCRIPTIONS,
@@ -16,7 +18,9 @@ router = APIRouter(prefix="/api/v1/schema", tags=["schema confirmation"])
 
 
 @router.get("/fields")
-def list_canonical_fields() -> dict:
+def list_canonical_fields(
+    principal: AuthenticatedUser = Depends(get_current_principal),
+) -> dict:
     """Return canonical fields and the metadata needed when a user maps them."""
     fields = []
     for name, description in CANONICAL_FIELD_DESCRIPTIONS.items():
@@ -41,6 +45,9 @@ def list_canonical_fields() -> dict:
 
 
 @router.post("/confirm")
-def confirm_schema(payload: SchemaConfirmationRequest) -> dict:
+def confirm_schema(
+    payload: SchemaConfirmationRequest,
+    principal: AuthenticatedUser = Depends(get_current_principal),
+) -> dict:
     """Validate explicit user choices for every column in a profiling response."""
     return build_confirmation_response(payload)

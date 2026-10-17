@@ -31,7 +31,7 @@ Upload → parse/profile → propose schema mappings → user confirms → norma
 - Each analysis module declares required inputs and returns insufficient_data when prerequisites are absent.
 - Raw user data must not be committed to the repository.
 - Do not treat synthetic data metrics as real-world validation.
-- Implement authentication and tenant isolation before using real organization data in a shared deployment.
+- Continue hardening authentication and tenant isolation before using real organization data in a shared deployment. This implementation does not yet include rate limiting, MFA, account recovery, token refresh, dedicated secret management, comprehensive auditing, retention/deletion controls, or a full security review.
 
 ## Initial deployment shape
 
@@ -42,4 +42,4 @@ Start as a modular monolith: one FastAPI application with separate Python module
 
 The current backend can persist normalization runs when the caller explicitly submits `persist=true` to `POST /api/v1/normalize`. It stores the confirmed mapping and run options, summary, products, batches, source-document metadata, transactions, inventory snapshots, quality issues, and transformation traces in one database transaction. The initial schema is versioned with Alembic. Original uploaded bytes are deliberately not stored by this workflow.
 
-Saved runs can be reviewed through `GET /api/v1/normalization-runs/{run_id}?organization_id=...`, which returns bounded previews. The organization parameter is only a caller-supplied query filter; it does not prove identity or provide tenant authorization. Production authentication, retention controls, backup/restore, and real authorization remain future work.
+Authentication and tenant-access baseline: accounts are stored with Argon2 password hashes; login returns a signed 30-minute bearer token; each protected request checks token signature/expiry and confirms the account remains active. Organizations and user memberships are stored explicitly with owner/admin/member/viewer roles. Registration does not grant organization access; the organization creator becomes owner and owners/admins grant membership to already-registered accounts. The profiling, schema, normalization, and run-review APIs require bearer authentication. Tenant-scoped operations verify membership on the server; only owner/admin/member roles may persist normalization runs, and run retrieval requires active tenant membership. A supplied organization ID is a selector, not proof of authorization.

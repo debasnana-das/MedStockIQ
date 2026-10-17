@@ -7,7 +7,7 @@ from decimal import Decimal
 from typing import Any
 
 from sqlalchemy import (
-    Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON,
+    Boolean, CheckConstraint, Date, DateTime, ForeignKey, ForeignKeyConstraint, Index, Integer, JSON,
     Numeric, String, Text, func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -210,3 +210,53 @@ class NormalizationTransformation(Base):
     source_column: Mapped[str | None] = mapped_column(String(200))
     rule: Mapped[str] = mapped_column(String(100), nullable=False)
     targets_json: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+
+
+class Organization(Base):
+    """Organization or tenant that owns inventory data."""
+
+    __tablename__ = "organizations"
+
+    organization_id: Mapped[str] = mapped_column(String(100), primary_key=True)
+    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class UserAccount(Base):
+    """Login identity; organization access is granted separately via memberships."""
+
+    __tablename__ = "user_accounts"
+
+    user_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), nullable=False, unique=True, index=True)
+    password_hash: Mapped[str] = mapped_column(String(500), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class OrganizationMembership(Base):
+    """Explicit per-user access to a single organization."""
+
+    __tablename__ = "organization_memberships"
+    __table_args__ = (
+        Index("ix_organization_memberships_user_id", "user_id"),
+        Index("ix_organization_memberships_organization_role", "organization_id", "role"),
+        CheckConstraint("role IN ('owner', 'admin', 'member', 'viewer')", name="valid_role"),
+    )
+
+    organization_id: Mapped[str] = mapped_column(
+        ForeignKey("organizations.organization_id", ondelete="CASCADE"), primary_key=True
+    )
+    user_id: Mapped[str] = mapped_column(
+        ForeignKey("user_accounts.user_id", ondelete="CASCADE"), primary_key=True
+    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

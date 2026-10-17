@@ -1,9 +1,3 @@
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-client = TestClient(app)
-
 
 def _base_payload() -> dict:
     return {
@@ -50,7 +44,7 @@ def _base_payload() -> dict:
     }
 
 
-def test_schema_confirmation_accepts_explicit_valid_choices() -> None:
+def test_schema_confirmation_accepts_explicit_valid_choices(client) -> None:
     response = client.post("/api/v1/schema/confirm", json=_base_payload())
 
     assert response.status_code == 200
@@ -68,7 +62,7 @@ def test_schema_confirmation_accepts_explicit_valid_choices() -> None:
     assert composite["transformation_rule"] == "split_quantity_and_free"
 
 
-def test_schema_confirmation_marks_user_corrected_mapping() -> None:
+def test_schema_confirmation_marks_user_corrected_mapping(client) -> None:
     payload = _base_payload()
     mapping = payload["mappings"][0]
     mapping["proposed_canonical_field"] = "source_product_code"
@@ -80,7 +74,7 @@ def test_schema_confirmation_marks_user_corrected_mapping() -> None:
     assert product["mapping_origin"] == "user_corrected"
 
 
-def test_schema_confirmation_requires_a_decision_for_every_column() -> None:
+def test_schema_confirmation_requires_a_decision_for_every_column(client) -> None:
     payload = _base_payload()
     payload["mappings"].pop()
     response = client.post("/api/v1/schema/confirm", json=payload)
@@ -89,7 +83,7 @@ def test_schema_confirmation_requires_a_decision_for_every_column() -> None:
     assert "Every profiled column needs exactly one decision" in response.text
 
 
-def test_schema_confirmation_rejects_conflicting_target_fields() -> None:
+def test_schema_confirmation_rejects_conflicting_target_fields(client) -> None:
     payload = {
         "profiled_columns": [
             {"column_index": 0, "source_column": "PRODUCT"},
@@ -117,7 +111,7 @@ def test_schema_confirmation_rejects_conflicting_target_fields() -> None:
     assert "mapped by both" in response.text
 
 
-def test_schema_confirmation_requires_date_format() -> None:
+def test_schema_confirmation_requires_date_format(client) -> None:
     payload = _base_payload()
     payload["mappings"][1].pop("date_format")
     response = client.post("/api/v1/schema/confirm", json=payload)
@@ -126,7 +120,7 @@ def test_schema_confirmation_requires_date_format() -> None:
     assert "requires an explicit date_format" in response.text
 
 
-def test_schema_confirmation_requires_quantity_unit() -> None:
+def test_schema_confirmation_requires_quantity_unit(client) -> None:
     payload = _base_payload()
     payload["mappings"][2].pop("quantity_unit")
     response = client.post("/api/v1/schema/confirm", json=payload)
@@ -135,7 +129,7 @@ def test_schema_confirmation_requires_quantity_unit() -> None:
     assert "require quantity_unit" in response.text
 
 
-def test_schema_confirmation_rejects_unhandled_qty_free_composite() -> None:
+def test_schema_confirmation_rejects_unhandled_qty_free_composite(client) -> None:
     payload = _base_payload()
     payload["mappings"][2].pop("transformation_rule")
     response = client.post("/api/v1/schema/confirm", json=payload)
@@ -144,7 +138,7 @@ def test_schema_confirmation_rejects_unhandled_qty_free_composite() -> None:
     assert "requires transformation_rule" in response.text
 
 
-def test_field_catalog_explains_required_metadata() -> None:
+def test_field_catalog_explains_required_metadata(client) -> None:
     response = client.get("/api/v1/schema/fields")
 
     assert response.status_code == 200

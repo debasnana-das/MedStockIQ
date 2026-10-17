@@ -8,21 +8,43 @@ from pathlib import Path
 from typing import Any
 from uuid import UUID
 
-from fastapi import APIRouter, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
+from app.db.models import Organization, OrganizationMembership
 from app.db.persistence import get_persisted_normalization_preview, persist_normalization_result
-from app.db.session import DatabaseNotConfigured, session_scope
+from app.db.session import get_db_session
 from app.ingestion.readers import read_tabular_content
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
 from app.schema.confirmation import SchemaConfirmationRequest
+from app.security import AuthenticatedUser, get_current_principal
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1", tags=["canonical normalization"])
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MAX_PREVIEW_ROWS = 10
 MAX_ISSUE_PREVIEW = 50
+WRITER_ROLES = {"owner", "admin", "member"}
+
+
+def _require_organization_access(
+    session: Session,
+    principal: AuthenticatedUser,
+    organization_id: str,
+    *,
+    write: bool = False,
+) -> OrganizationMembership:
+    """Enforce tenant membership on the server; never trust a supplied ID alone."""
+    organization = session.get(Organization, organization_id)
+    membership = session.get(OrganizationMembership, (organization_id, principal.user_id))
+    if organization is None or not organization.is_active or membership is None:
+        # Hide whether an unrelated tenant exists.
+        raise HTTPException(status_code=404, detail="Organization was not found.")
+    if write and membership.role not in WRITER_ROLES:
+        raise HTTPException(status_code=403, detail="Your organization role cannot save normalization runs.")
+    return membership
 
 
 @router.post("/normalize")
@@ -31,11 +53,13 @@ async def normalize_uploaded_file(
     confirmed_schema_json: str = Form(...),
     options_json: str = Form(default="{}"),
     persist: bool = Form(default=False),
+    principal: AuthenticatedUser = Depends(get_current_principal),
+    session: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Normalize confirmed CSV/XLSX mappings; saving is explicitly opt-in.
+    """Normalize confirmed mappings and save records only after tenant authorization.
 
-    When persist=true, canonical entities, mapping choices, quality issues and
-    transformations are written in one transaction. Original file bytes are not saved.
+    Upload bytes are held in memory for this request and are never stored as a file.
+    Persisted records are assigned to an organization only after membership is verified.
     """
     filename = Path(file.filename or "").name
     suffix = Path(filename).suffix.casefold()
@@ -73,11 +97,19 @@ async def normalize_uploaded_file(
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise HTTPException(status_code=422, detail=f"Invalid JSON form field: {exc}") from exc
 
-    if persist and options.organization_id == "ORG-UNSPECIFIED":
+    organization_id = options.organization_id
+    membership = None
+    if organization_id != "ORG-UNSPECIFIED":
+        membership = _require_organization_access(
+            session, principal, organization_id, write=persist
+        )
+    if persist and organization_id == "ORG-UNSPECIFIED":
         raise HTTPException(
             status_code=422,
-            detail="Set options_json.organization_id explicitly before persisting a normalization run.",
+            detail="Set options_json.organization_id to an organization you belong to before persisting.",
         )
+    if persist and (membership is None or membership.role not in WRITER_ROLES):
+        raise HTTPException(status_code=403, detail="Your organization role cannot save normalization runs.")
 
     try:
         result = normalize_dataframe(
@@ -92,19 +124,18 @@ async def normalize_uploaded_file(
 
     if persist:
         try:
-            with session_scope() as session:
-                run_id = persist_normalization_result(
-                    session=session,
-                    result=result,
-                    confirmed_schema=confirmed_schema,
-                    options=options,
-                    source_file_name=filename,
-                    source_format=suffix.removeprefix("."),
-                    source_file_bytes=len(content),
-                )
-        except DatabaseNotConfigured as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from exc
+            run_id = persist_normalization_result(
+                session=session,
+                result=result,
+                confirmed_schema=confirmed_schema,
+                options=options,
+                source_file_name=filename,
+                source_format=suffix.removeprefix("."),
+                source_file_bytes=len(content),
+            )
+            session.commit()
         except SQLAlchemyError as exc:
+            session.rollback()
             logger.exception("Could not persist normalization run")
             raise HTTPException(
                 status_code=503,
@@ -118,8 +149,8 @@ async def normalize_uploaded_file(
         )
     else:
         result["note"] = (
-            "Preview only: nothing was saved. Set persist=true and configure DATABASE_URL "
-            "to save this normalization run."
+            "Preview only: nothing was saved. Set persist=true and select an organization role "
+            "permitted to save this normalization run to persist the result."
         )
 
     preview_tables = {
@@ -140,23 +171,20 @@ async def normalize_uploaded_file(
 def get_normalization_run(
     run_id: UUID,
     organization_id: str = Query(..., min_length=1, max_length=100),
+    principal: AuthenticatedUser = Depends(get_current_principal),
+    session: Session = Depends(get_db_session),
 ) -> dict[str, Any]:
-    """Return saved previews filtered by organization_id.
+    """Return bounded previews only after verifying membership of the requested tenant."""
+    _require_organization_access(session, principal, organization_id)
 
-    This query filter is not authentication. Do not expose this route to untrusted
-    clients until authenticated identity and tenant authorization are implemented.
-    """
     try:
-        with session_scope() as session:
-            result = get_persisted_normalization_preview(
-                session=session,
-                run_id=str(run_id),
-                organization_id=organization_id,
-                preview_limit=MAX_PREVIEW_ROWS,
-                issue_limit=MAX_ISSUE_PREVIEW,
-            )
-    except DatabaseNotConfigured as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        result = get_persisted_normalization_preview(
+            session=session,
+            run_id=str(run_id),
+            organization_id=organization_id,
+            preview_limit=MAX_PREVIEW_ROWS,
+            issue_limit=MAX_ISSUE_PREVIEW,
+        )
     except SQLAlchemyError as exc:
         logger.exception("Could not retrieve normalization run")
         raise HTTPException(status_code=503, detail="Database query failed.") from exc
