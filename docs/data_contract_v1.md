@@ -252,11 +252,13 @@ For each uploaded file, preserve mapping records with:
 
 - file_id
 - source_column
+- source_column_index (zero-based; disambiguates repeated header names)
 - sample_values, limited to the minimum necessary
 - detected_data_type
 - proposed_canonical_field
 - mapping_confidence, explicitly not a guarantee
 - mapping_status: suggested, confirmed, corrected, ignored, or unmapped
+- mapping_origin: suggestion_confirmed, user_corrected, manual, or user_ignored
 - confirmed_by_user or equivalent audit reference
 - transformation_rule
 - confirmed source date/quantity format

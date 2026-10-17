@@ -1,45 +1,109 @@
-# CSV/XLSX profiling API
+# CSV/XLSX profiling and schema-confirmation API
 
-## Endpoint
+The API is a local development prototype. It does not yet authenticate users, persist uploads/mappings, normalize the source rows, or run inventory-risk analysis.
+
+## 1. Profile an upload
 
 `POST /api/v1/profile`
 
 - Accepts `.csv` and `.xlsx` files.
-- Maximum uploaded size: 10 MB.
-- Profiles up to the first 20,000 rows.
-- XLSX profiling reads the first worksheet.
-- The current endpoint processes the upload in memory and does not persist it.
-- PDF/OCR, schema-confirmation writes, normalization, and inventory analysis are not implemented in this endpoint yet.
+- Maximum upload: 10 MB.
+- Profiles up to 20,000 rows; XLSX uses the first worksheet.
+- Upload bytes are processed in memory and are not persisted by this endpoint.
+- PDF/OCR is not implemented.
 
-## Example
+Example:
 
 ```bash
 curl -X POST http://127.0.0.1:8000/api/v1/profile \
   -F "file=@sample.csv"
 ```
 
-## Response shape
+The result includes a `columns` array with a zero-based `column_index`, original `source_column`, detected type, null/unique counts, sample values, and a candidate mapping. Column index plus header name is used because real files can contain duplicate column labels.
 
-The response includes:
+## 2. Read the canonical field catalogue
 
-- `filename`, `format`, and `storage` (currently `in_memory_not_persisted`).
-- `row_count_profiled`, `column_count`, and `duplicate_rows_profiled`.
-- `truncated`, indicating that the row cap may have limited profiling.
-- A `columns` array with original column name, detected type, non-null count, missing count/percentage, unique count, up to five sample values, and a candidate mapping.
-- `warnings` about missing recognizable fields.
+`GET /api/v1/schema/fields`
 
-Each candidate mapping contains `canonical_field`, `confidence`, `requires_confirmation`, `mapping_status`, an optional `transaction_type_hint`, and a rationale.
+Returns supported canonical field names, their descriptions, and metadata required during confirmation.
 
-## Interpretation
+Examples:
 
-Mappings are suggestions, not accepted schema decisions. In particular:
+- Date fields require a user-confirmed `date_format`, for example `MM/YY`.
+- Quantity/stock fields require a `quantity_unit`, for example `pack`, `strip`, or `tablet`.
+- The transaction `quantity` field requires `transaction_type`, such as `purchase_receipt`, `retailer_dispatch`, or `retail_sale`.
+- A composite `QTY+FREE` source column must explicitly select `split_quantity_and_free` and map its additional value to `free_quantity`.
 
-- `QTY` does not establish whether a number is purchased, sold, or dispatched, nor its unit.
-- `QTY+FREE` is a composite field and must be clarified before normalization.
-- `EXP` can contain ambiguous month/year text such as `03/30`; raw values must be retained and the date convention confirmed.
-- `RATE`, `AMOUNT`, discounts, and tax columns need contextual confirmation.
-- Unknown columns are reported as unmapped rather than being silently discarded.
+## 3. Confirm schema mappings
 
-## Safety limitation
+`POST /api/v1/schema/confirm`
 
-This endpoint is a development prototype without authentication, tenant isolation, database persistence, retention controls, or production deployment protections. Use synthetic/sanitized files locally; do not expose this endpoint to the internet or use confidential live data until the relevant protections are implemented and tested.
+Send back the list of source columns returned by the profiler and exactly one decision for every column.
+
+Each column choice is either:
+
+- `action: "map"`: provide a supported `canonical_field` and any required metadata; or
+- `action: "ignore"`: explicitly exclude the source column from this canonical mapping.
+
+Example request:
+
+```json
+{
+  "profiled_columns": [
+    {"column_index": 0, "source_column": "PRODUCT"},
+    {"column_index": 1, "source_column": "EXP"},
+    {"column_index": 2, "source_column": "QTY+FREE"},
+    {"column_index": 3, "source_column": "INTERNAL NOTE"}
+  ],
+  "mappings": [
+    {
+      "column_index": 0,
+      "source_column": "PRODUCT",
+      "action": "map",
+      "proposed_canonical_field": "product_name",
+      "canonical_field": "product_name"
+    },
+    {
+      "column_index": 1,
+      "source_column": "EXP",
+      "action": "map",
+      "proposed_canonical_field": "expiry_date",
+      "canonical_field": "expiry_date",
+      "date_format": "MM/YY"
+    },
+    {
+      "column_index": 2,
+      "source_column": "QTY+FREE",
+      "action": "map",
+      "proposed_canonical_field": "quantity",
+      "canonical_field": "quantity",
+      "quantity_unit": "pack",
+      "transaction_type": "purchase_receipt",
+      "transformation_rule": "split_quantity_and_free",
+      "additional_canonical_fields": ["free_quantity"]
+    },
+    {
+      "column_index": 3,
+      "source_column": "INTERNAL NOTE",
+      "action": "ignore"
+    }
+  ]
+}
+```
+
+The endpoint validates that every profiled column has exactly one decision, the index/header pair matches the submitted profile, all target fields are supported, and two columns do not map to the same canonical field. It also checks that dates have a format, quantity fields have a unit, transactional quantity has a movement type, and `QTY+FREE` has an explicitly selected split rule.
+
+A successful response reports the count of mapped and ignored columns, and each decision's status/origin:
+
+- `confirmed` / `suggestion_confirmed`
+- `corrected` / `user_corrected`
+- `confirmed` / `manual`
+- `ignored` / `user_ignored`
+
+A successful response means the schema choices passed validation; it does not mean the file is ready for every inventory analysis.
+
+## 4. Current boundaries
+
+The confirmation endpoint is stateless. It validates the submitted column list and choices, but does not retrieve the original uploaded profile. It does not save the mapping, persist a file, parse date values, split quantity values, normalize the dataset, or calculate inventory risk. Those are later implementation stages.
+
+Until authentication, tenant isolation, retention controls, and deployment protections are implemented and tested, use synthetic/sanitized files locally. Do not expose this development API to the internet or use confidential live data.
