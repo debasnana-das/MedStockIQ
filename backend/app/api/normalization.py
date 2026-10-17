@@ -124,6 +124,9 @@ async def normalize_uploaded_file(
 
     if persist:
         try:
+            # Tenant authorization used this request session for SELECTs; close that
+            # read transaction so the persistence service can own its atomic write.
+            session.commit()
             run_id = persist_normalization_result(
                 session=session,
                 result=result,
@@ -133,7 +136,6 @@ async def normalize_uploaded_file(
                 source_format=suffix.removeprefix("."),
                 source_file_bytes=len(content),
             )
-            session.commit()
         except SQLAlchemyError as exc:
             session.rollback()
             logger.exception("Could not persist normalization run")

@@ -163,6 +163,7 @@ def create_organization(
         is_active=True,
     )
     session.add(organization)
+    session.flush()  # Insert the tenant row before its membership row references it.
     session.add(
         OrganizationMembership(
             organization_id=organization.organization_id,

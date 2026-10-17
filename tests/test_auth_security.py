@@ -4,7 +4,7 @@ import json
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, select, update
+from sqlalchemy import create_engine, event, select, update
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
@@ -28,6 +28,12 @@ def auth_context(monkeypatch: pytest.MonkeyPatch):
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    @event.listens_for(engine, "connect")
+    def enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
+
     Base.metadata.create_all(engine)
 
     def override_db_session():
@@ -103,6 +109,16 @@ def test_registration_hashes_password_and_grants_no_organization_access(auth_con
         json={"email": "PRIVATE@example.test", "password": "Correct-horse-battery-42"},
     )
     assert duplicate.status_code == 409
+
+    correct_login = client.post(
+        "/api/v1/auth/token",
+        json={"email": "PRIVATE@example.test", "password": "Correct-horse-battery-42"},
+    )
+    assert correct_login.status_code == 200, correct_login.text
+    assert client.get(
+        "/api/v1/schema/fields",
+        headers=_headers(correct_login.json()["access_token"]),
+    ).status_code == 200
 
     wrong_password = client.post(
         "/api/v1/auth/token",
