@@ -1,10 +1,9 @@
-import io
-
 from app.main import app
 from app.schema.mapping import suggest_column_mapping
 from app.schema.profiler import profile_dataframe
 from fastapi.testclient import TestClient
 import pandas as pd
+import io
 
 
 def test_product_and_expiry_headers_get_mapping_suggestions() -> None:
@@ -27,16 +26,16 @@ def test_qty_free_is_marked_ambiguous() -> None:
 def test_profile_reports_missing_values_and_duplicate_rows() -> None:
     frame = pd.DataFrame(
         {
-            "PRODUCT": ["SYNTHETIC A", "SYNTHETIC A"],
-            "BATCH": ["B001", "B001"],
-            "EXP": ["03/30", "03/30"],
-            "QTY+FREE": [None, "2+1"],
+            "PRODUCT": ["SYNTHETIC A", "SYNTHETIC A", "SYNTHETIC A"],
+            "BATCH": ["B001", "B001", "B001"],
+            "EXP": ["03/30", "03/30", "03/30"],
+            "QTY+FREE": ["2+1", "2+1", None],
         }
     )
 
     report = profile_dataframe(frame)
 
-    assert report["row_count_profiled"] == 2
+    assert report["row_count_profiled"] == 3
     assert report["duplicate_rows_profiled"] == 1
     qty = next(col for col in report["columns"] if col["source_column"] == "QTY+FREE")
     assert qty["mapping"]["requires_confirmation"] is True
