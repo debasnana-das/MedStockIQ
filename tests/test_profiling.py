@@ -1,8 +1,11 @@
+import io
+
+import pandas as pd
+from fastapi.testclient import TestClient
+
 from app.main import app
 from app.schema.mapping import suggest_column_mapping
 from app.schema.profiler import profile_dataframe
-from fastapi.testclient import TestClient
-import io
 
 
 def test_product_and_expiry_headers_get_mapping_suggestions() -> None:
@@ -53,7 +56,9 @@ def test_profile_endpoint_accepts_csv_in_memory() -> None:
     body = response.json()
     assert body["storage"] == "in_memory_not_persisted"
     assert body["row_count_profiled"] == 1
-    assert {column["source_column"] for column in body["columns"]} == {"PRODUCT", "BATCH", "EXP", "QTY"}
+    assert {
+        column["source_column"] for column in body["columns"]
+    } == {"PRODUCT", "BATCH", "EXP", "QTY"}
 
 
 def test_profile_endpoint_rejects_unsupported_files() -> None:
