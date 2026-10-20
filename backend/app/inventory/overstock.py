@@ -130,7 +130,7 @@ def evaluate_overstock_review(
     """Compare fresh stock against average daily sales for one confirmed sales run."""
     start, end = _date(sales_history_start_date), _date(sales_history_end_date)
     days = (end - start).days + 1 if start and end and start <= end else None
-    blockers, warnings = [], []
+    blockers = []
     if not sales_history_complete:
         blockers.append("The selected sales run has not confirmed every sale and every no-sale day in its continuous reporting window.")
     if start is None or end is None:
@@ -158,7 +158,7 @@ def evaluate_overstock_review(
                     "source_product_code", "product_name", "manufacturer_name", "hsn_code", "pack_description"
                 )},
             })
-    keys, methods, _ = resolve_product_identity_keys(catalog)
+    keys, _methods, _ = resolve_product_identity_keys(catalog)
     invalid: dict[str, int] = defaultdict(int)
     by_product: dict[tuple, list[dict]] = defaultdict(list)
     units_by_product: dict[tuple, set[str]] = defaultdict(set)
