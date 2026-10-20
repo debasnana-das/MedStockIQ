@@ -302,3 +302,101 @@ def get_persisted_normalization_preview(
         "issue_preview_truncated": int(run.summary_json.get("issue_count", 0)) > len(issues),
         "transformation_preview_truncated": int(run.summary_json.get("transformation_count", 0)) > len(transformations),
     }
+
+
+def get_persisted_inventory_history_observations(
+    session: Session,
+    organization_id: str,
+    *,
+    as_of_date: date,
+    start_date: date | None = None,
+    end_date: date | None = None,
+    row_limit: int = 20_000,
+) -> tuple[list[dict[str, Any]], bool]:
+    """Read cross-run snapshot evidence for one tenant, with an explicit safety cap.
+
+    The returned identifiers remain run-scoped. This query returns product/batch
+    attributes needed by the pure ledger policy; it never updates or links records.
+    The boolean is true when more rows exist than the requested cap.
+    """
+    statement = (
+        select(
+            InventorySnapshot.run_id.label("run_id"),
+            InventorySnapshot.snapshot_id.label("snapshot_id"),
+            InventorySnapshot.organization_id.label("organization_id"),
+            InventorySnapshot.snapshot_date.label("snapshot_date"),
+            InventorySnapshot.product_id.label("product_id"),
+            InventorySnapshot.batch_record_id.label("batch_record_id"),
+            InventorySnapshot.quantity_on_hand.label("quantity_on_hand"),
+            InventorySnapshot.quantity_unit.label("quantity_unit"),
+            InventorySnapshot.stock_basis.label("stock_basis"),
+            NormalizedProduct.source_product_code.label("source_product_code"),
+            NormalizedProduct.product_name.label("product_name"),
+            NormalizedProduct.manufacturer_name.label("manufacturer_name"),
+            NormalizedProduct.hsn_code.label("hsn_code"),
+            NormalizedProduct.pack_description.label("pack_description"),
+            NormalizedBatch.batch_code.label("batch_code"),
+            NormalizedBatch.expiry_date.label("expiry_date"),
+            NormalizedBatch.manufacturing_date.label("manufacturing_date"),
+            NormalizationRun.source_file_name.label("source_file_name"),
+        )
+        .select_from(InventorySnapshot)
+        .join(
+            NormalizationRun,
+            NormalizationRun.run_id == InventorySnapshot.run_id,
+        )
+        .join(
+            NormalizedProduct,
+            (NormalizedProduct.run_id == InventorySnapshot.run_id)
+            & (NormalizedProduct.product_id == InventorySnapshot.product_id),
+        )
+        .outerjoin(
+            NormalizedBatch,
+            (NormalizedBatch.run_id == InventorySnapshot.run_id)
+            & (NormalizedBatch.batch_record_id == InventorySnapshot.batch_record_id),
+        )
+        .where(
+            InventorySnapshot.organization_id == organization_id,
+            NormalizationRun.organization_id == organization_id,
+            NormalizedProduct.organization_id == organization_id,
+            InventorySnapshot.snapshot_date <= as_of_date,
+        )
+    )
+    if start_date is not None:
+        statement = statement.where(InventorySnapshot.snapshot_date >= start_date)
+    if end_date is not None:
+        statement = statement.where(InventorySnapshot.snapshot_date <= end_date)
+
+    rows = list(session.execute(
+        statement.order_by(
+            InventorySnapshot.snapshot_date.asc(),
+            InventorySnapshot.run_id.asc(),
+            InventorySnapshot.snapshot_id.asc(),
+        ).limit(row_limit + 1)
+    ).mappings())
+    truncated = len(rows) > row_limit
+    observations = []
+    for row in rows[:row_limit]:
+        observations.append({
+            "run_id": row["run_id"],
+            "snapshot_id": row["snapshot_id"],
+            "organization_id": row["organization_id"],
+            "snapshot_date": row["snapshot_date"].isoformat() if row["snapshot_date"] else None,
+            "product_id": row["product_id"],
+            "batch_record_id": row["batch_record_id"],
+            "quantity_on_hand": _number(row["quantity_on_hand"]),
+            "quantity_unit": row["quantity_unit"],
+            "stock_basis": row["stock_basis"],
+            "source_product_code": row["source_product_code"],
+            "product_name": row["product_name"],
+            "manufacturer_name": row["manufacturer_name"],
+            "hsn_code": row["hsn_code"],
+            "pack_description": row["pack_description"],
+            "batch_code": row["batch_code"],
+            "expiry_date": row["expiry_date"].isoformat() if row["expiry_date"] else None,
+            "manufacturing_date": (
+                row["manufacturing_date"].isoformat() if row["manufacturing_date"] else None
+            ),
+            "source_file_name": row["source_file_name"],
+        })
+    return observations, truncated

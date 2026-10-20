@@ -14,11 +14,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.models import Organization, OrganizationMembership
-from app.db.persistence import get_persisted_normalization_preview, persist_normalization_result
+from app.db.persistence import (\n    get_persisted_inventory_history_observations,\n    get_persisted_normalization_preview,\n    persist_normalization_result,\n)
 from app.db.session import get_db_session
 from app.ingestion.readers import read_tabular_content
 from app.forecasting.baseline import evaluate_demand_baselines
-from app.inventory.arithmetic import calculate_inventory_arithmetic
+from app.inventory.arithmetic import calculate_inventory_arithmetic\nfrom app.inventory.history import build_inventory_history_ledger
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
 from app.quality.readiness import evaluate_data_quality_and_readiness
 from app.schema.confirmation import SchemaConfirmationRequest
@@ -214,3 +214,59 @@ def get_normalization_run(
     if result is None:
         raise HTTPException(status_code=404, detail="Normalization run was not found.")
     return result
+
+
+
+@router.get("/inventory-history")
+def get_inventory_history(
+    organization_id: str = Query(..., min_length=1, max_length=100),
+    as_of_date: date | None = Query(default=None),
+    start_date: date | None = Query(default=None),
+    end_date: date | None = Query(default=None),
+    principal: AuthenticatedUser = Depends(get_current_principal),
+    session: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Build a read-only cross-upload snapshot timeline after tenant access checks."""
+    _require_organization_access(session, principal, organization_id)
+    effective_as_of = as_of_date or date.today()
+    if end_date is not None and end_date > effective_as_of:
+        raise HTTPException(status_code=422, detail="end_date must be on or before as_of_date.")
+    if start_date is not None and start_date > effective_as_of:
+        raise HTTPException(status_code=422, detail="start_date must be on or before as_of_date.")
+    if start_date is not None and end_date is not None and start_date > end_date:
+        raise HTTPException(status_code=422, detail="start_date must be on or before end_date.")
+
+    try:
+        observations, truncated = get_persisted_inventory_history_observations(
+            session=session,
+            organization_id=organization_id,
+            as_of_date=effective_as_of,
+            start_date=start_date,
+            end_date=end_date,
+            row_limit=20_000,
+        )
+    except SQLAlchemyError as exc:
+        logger.exception("Could not query inventory history")
+        raise HTTPException(status_code=503, detail="Inventory history query failed.") from exc
+
+    if truncated:
+        raise HTTPException(
+            status_code=413,
+            detail=(
+                "More than 20,000 inventory snapshots match this query. Add a narrower "
+                "start_date and/or end_date so the ledger can analyze a complete bounded window."
+            ),
+        )
+
+    report = build_inventory_history_ledger(
+        observations,
+        organization_id=organization_id,
+        as_of_date=effective_as_of,
+    )
+    report["coverage_window"] = {
+        "start_date": start_date.isoformat() if start_date else None,
+        "end_date": end_date.isoformat() if end_date else effective_as_of.isoformat(),
+        "as_of_date": effective_as_of.isoformat(),
+        "window_is_date_bounded": start_date is not None or end_date is not None,
+    }
+    return report

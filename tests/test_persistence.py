@@ -314,6 +314,23 @@ def test_normalize_endpoint_can_persist_and_retrieve_a_run(
             headers=headers,
         )
         assert wrong_org.status_code == 404
+
+        history = client.get(
+            "/api/v1/inventory-history",
+            params={"organization_id": "ORG-API-TEST", "as_of_date": "2026-10-20"},
+            headers=headers,
+        )
+        assert history.status_code == 200, history.text
+        assert history.json()["status"] == "insufficient_data"
+        assert history.json()["series"] == []
+
+        foreign_history = client.get(
+            "/api/v1/inventory-history",
+            params={"organization_id": "ORG-WRONG"},
+            headers=headers,
+        )
+        assert foreign_history.status_code == 404
+
     finally:
         app.dependency_overrides.pop(get_db_session, None)
 
@@ -354,3 +371,38 @@ def test_postgresql_persistence_round_trip_when_enabled() -> None:
                     delete(NormalizationRun).where(NormalizationRun.run_id == run_id)
                 )
         engine.dispose()
+
+
+def test_persisted_inventory_history_reads_across_runs_with_tenant_scoping(database_engine) -> None:
+    from app.db.persistence import get_persisted_inventory_history_observations
+
+    first = _full_result("ORG-HISTORY-TEST")
+    second = _full_result("ORG-HISTORY-TEST")
+    second["tables"]["inventory_snapshots"][0]["snapshot_date"] = "2026-10-16"
+    second["tables"]["inventory_snapshots"][0]["quantity_on_hand"] = 12
+    other_org = _full_result("ORG-OTHER-HISTORY")
+    other_org["tables"]["inventory_snapshots"][0]["snapshot_date"] = "2026-10-17"
+
+    with Session(database_engine) as session:
+        persist_normalization_result(
+            session, first, _schema(), _options("ORG-HISTORY-TEST"), "first.csv", "csv", 512
+        )
+        persist_normalization_result(
+            session, second, _schema(), _options("ORG-HISTORY-TEST"), "second.csv", "csv", 512
+        )
+        persist_normalization_result(
+            session, other_org, _schema(), _options("ORG-OTHER-HISTORY"), "other.csv", "csv", 512
+        )
+
+    with Session(database_engine) as session:
+        observations, truncated = get_persisted_inventory_history_observations(
+            session, "ORG-HISTORY-TEST", as_of_date=date(2026, 10, 20),
+            start_date=date(2026, 10, 1), end_date=date(2026, 10, 20),
+        )
+
+    assert truncated is False
+    assert len(observations) == 2
+    assert {row["source_file_name"] for row in observations} == {"first.csv", "second.csv"}
+    assert {row["organization_id"] for row in observations} == {"ORG-HISTORY-TEST"}
+    assert {row["quantity_on_hand"] for row in observations} == {12.0, 18.0}
+    assert all(row["source_product_code"] == "SKU-01" for row in observations)

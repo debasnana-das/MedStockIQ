@@ -35,7 +35,8 @@
 - [ ] Expand date, unit and cross-document consistency rules as more source formats and authorized sanitized files become available.
 - [x] Implement dated snapshot selection, duplicate/conflict/unit validation, basic snapshot-to-movement reconciliation, and batch-level expiry alerts.
 - [x] Return explicit insufficient_data statuses and provisional-value explanations where evidence is insufficient.
-- [ ] Reconcile inventory history across multiple persisted runs only after a cross-upload ledger and identity-matching policy are defined.
+- [x] Add a read-only cross-upload inventory-history ledger using conservative source-code/exact-attribute matching, with ambiguity/conflict reporting and tenant-scoped access.
+- [ ] Validate matching with authorized sanitized exports and define a user-confirmed durable product/batch catalog before using cross-upload balances for risk estimates.
 
 ## Phase 4 — Forecasting and risk analysis
 - [x] Add daily retail-sales aggregation and naïve/7-day seasonal baseline comparison.

@@ -82,7 +82,7 @@ Normalization responses include a deterministic `quality_report` with grouped qu
 
 ## Inventory arithmetic and expiry monitoring
 
-Normalization's `quality_report.inventory_analysis` contains current-position previews, stock-snapshot validation findings, snapshot-to-movement reconciliation results, and positive-stock batch expiry alerts for fixed 30/90/180-day windows. Current stock comes from dated inventory snapshots only—invoice quantities are never assumed to be on hand. The service omits ambiguous positions, marks stale/unknown stock basis as provisional, and labels any calculated MRP value as indicative retail-price exposure rather than purchase cost or expected expiry loss. This remains run-local analysis and does not yet maintain an inventory ledger across uploads.
+Normalization's `quality_report.inventory_analysis` contains current-position previews, stock-snapshot validation findings, snapshot-to-movement reconciliation results, and positive-stock batch expiry alerts for fixed 30/90/180-day windows. Current stock comes from dated inventory snapshots only—invoice quantities are never assumed to be on hand. The service omits ambiguous positions, marks stale/unknown stock basis as provisional, and labels any calculated MRP value as indicative retail-price exposure rather than purchase cost or expected expiry loss. Run-level alerts remain distinct from the new read-only cross-upload history view; the ledger derives conservative identities from source codes or exact product attributes and flags duplicate/conflicting snapshots rather than summing them.
 
 
 ## Demand forecasting baseline
@@ -93,3 +93,8 @@ MedStockIQ includes an initial time-series benchmark for confirmed retail-sale h
 ## Rolling-origin forecast evaluation
 
 The demand baseline now uses expanding-window rolling-origin evaluation with multiple seven-day validation windows before a separate final seven-day holdout. Per-product baseline selection is based on rolling-origin MAE (with RMSE/model-name tie-breaks), and the final holdout remains a separate report. At least 49 days of explicitly complete history are required. Aggregate metrics are macro-averaged across products rather than pooling quantities with different units/scales. Evaluation on authorized real sales history and ongoing error monitoring remain future work.
+
+
+## Cross-upload inventory history ledger
+
+`GET /api/v1/inventory-history?organization_id=...` returns a tenant-scoped, read-only timeline from saved stock snapshots across separate uploads, with optional `as_of_date`, `start_date`, and `end_date` query parameters. Product and batch matching are conservative; generated IDs are run-local and are not treated as global identities. Repeated same-date balances are counted once, conflicts are left unresolved, mixed units are not converted, and product-level snapshots are kept separate from batch-level snapshots. The endpoint caps a query at 20,000 matched snapshots and asks for a narrower date window rather than returning partial history. See [cross-upload history API guidance](docs/profiling_api.md).
