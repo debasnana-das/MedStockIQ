@@ -64,7 +64,7 @@ def test_unconfirmed_sales_history_blocks_calculation():
 def test_inventory_snapshot_must_be_attested_complete():
     row = evaluate(stock=inventory(complete=False))["findings"][0]
     assert row["status"] == "insufficient_data"
-    assert "did not attest" in row["reason"]
+    assert "attested as a complete inventory snapshot" in row["reason"]
 
 
 def test_stale_snapshot_is_not_used():
