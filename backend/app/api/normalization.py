@@ -14,11 +14,16 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.db.models import Organization, OrganizationMembership
-from app.db.persistence import (\n    get_persisted_inventory_history_observations,\n    get_persisted_normalization_preview,\n    persist_normalization_result,\n)
+from app.db.persistence import (
+    get_persisted_inventory_history_observations,
+    get_persisted_normalization_preview,
+    persist_normalization_result,
+)
 from app.db.session import get_db_session
 from app.ingestion.readers import read_tabular_content
 from app.forecasting.baseline import evaluate_demand_baselines
-from app.inventory.arithmetic import calculate_inventory_arithmetic\nfrom app.inventory.history import build_inventory_history_ledger
+from app.inventory.arithmetic import calculate_inventory_arithmetic
+from app.inventory.history import build_inventory_history_ledger
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
 from app.quality.readiness import evaluate_data_quality_and_readiness
 from app.schema.confirmation import SchemaConfirmationRequest
