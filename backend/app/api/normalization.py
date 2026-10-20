@@ -18,6 +18,7 @@ from app.db.models import Organization, OrganizationMembership
 from app.db.persistence import (
     get_persisted_inventory_history_observations,
     get_persisted_normalization_preview,
+    get_persisted_overstock_sales_run,
     persist_normalization_result,
 )
 from app.db.session import get_db_session
@@ -25,6 +26,7 @@ from app.ingestion.readers import read_tabular_content
 from app.forecasting.baseline import evaluate_demand_baselines
 from app.inventory.arithmetic import calculate_inventory_arithmetic
 from app.inventory.history import build_inventory_history_ledger
+from app.inventory.overstock import evaluate_overstock_review
 from app.normalization.normalizer import NormalizationOptions, normalize_dataframe
 from app.quality.readiness import evaluate_data_quality_and_readiness
 from app.schema.confirmation import SchemaConfirmationRequest
@@ -276,3 +278,61 @@ def get_inventory_history(
         "window_is_date_bounded": start_date is not None or end_date is not None,
     }
     return report
+
+
+
+@router.get("/overstock-review")
+def get_overstock_review(
+    organization_id: str = Query(..., min_length=1, max_length=100),
+    sales_run_id: UUID = Query(...),
+    as_of_date: date | None = Query(default=None),
+    target_days_of_supply: float | None = Query(default=None, ge=1, le=365),
+    principal: AuthenticatedUser = Depends(get_current_principal),
+    session: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """Review stock against one confirmed saved retail-sales window."""
+    _require_organization_access(session, principal, organization_id)
+    effective_as_of = as_of_date or date.today()
+    try:
+        sales_run, sales_rows = get_persisted_overstock_sales_run(
+            session=session,
+            organization_id=organization_id,
+            run_id=str(sales_run_id),
+        )
+        if sales_run is None:
+            raise HTTPException(status_code=404, detail="Saved sales run was not found.")
+        if sales_run["document_type"] != "retail_sales":
+            raise HTTPException(
+                status_code=422,
+                detail="sales_run_id must identify a saved normalization run with document_type retail_sales.",
+            )
+        sales_options = sales_run["options"]
+        inventory_rows, truncated = get_persisted_inventory_history_observations(
+            session=session,
+            organization_id=organization_id,
+            as_of_date=effective_as_of,
+            row_limit=20_000,
+            document_type="inventory_report",
+        )
+    except HTTPException:
+        raise
+    except SQLAlchemyError as exc:
+        logger.exception("Could not query saved data for overstock review")
+        raise HTTPException(status_code=503, detail="Overstock review query failed.") from exc
+
+    if truncated:
+        raise HTTPException(
+            status_code=413,
+            detail="More than 20,000 saved inventory snapshots match this organization. Reduce the saved history before running overstock analysis.",
+        )
+    return evaluate_overstock_review(
+        inventory_rows,
+        sales_rows,
+        sales_run_id=str(sales_run_id),
+        organization_id=organization_id,
+        as_of_date=effective_as_of,
+        sales_history_complete=bool(sales_options.get("sales_history_complete", False)),
+        sales_history_start_date=sales_options.get("sales_history_start_date"),
+        sales_history_end_date=sales_options.get("sales_history_end_date"),
+        target_days_of_supply=target_days_of_supply,
+    )

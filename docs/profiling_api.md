@@ -139,3 +139,14 @@ Product identity is matched first by a source product code with no contradictory
 Identical same-date on-hand balances count once rather than summing repeat uploads. Different quantities or units on the same date are flagged as conflicts and produce an unknown balance for that date. Positions with multiple units are not converted and cannot claim a known latest balance. Batch-level and product-level snapshots are separate series. A balance difference between snapshots is shown only as a difference; it is not automatically attributed to sales, shrinkage, loss, or a specific movement.
 
 This is a read-only derived ledger, not a transaction-based stock reconstruction. It does not recognize invoice revisions/corrections automatically and must not be used for replenishment or loss estimates until identity decisions and source completeness have been validated with authorized real data.
+
+
+## 13. Overstock review
+
+Before stock can be compared with demand, normalization options for a stock file must include `"inventory_snapshot_complete": true` only when the dated inventory report contains every in-scope current on-hand position. The selected demand upload must use `document_type: "retail_sales"` and explicitly confirm `sales_history_complete: true` with `sales_history_start_date` and `sales_history_end_date`. The sales window must be at least 28 days and end no later than the review date.
+
+Call `GET /api/v1/overstock-review?organization_id=...&sales_run_id=...&target_days_of_supply=30`. The `sales_run_id` must be a saved normalization run in the same organization. This endpoint deliberately uses one selected sales run rather than combining multiple uploads that might overlap or repeat invoices. It uses only `retail_sale` transaction rows; supplier purchases and stockist dispatches are not treated as pharmacy customer demand. A target-days value is required because the system cannot assume the business's stock policy.
+
+Overstock is calculated as the confirmed latest on-hand stock less average daily quantity sold over the declared complete history window multiplied by target days of supply, floored at zero. Only fresh (30 days or newer), unit-compatible stock with a confirmed physical/system stock basis and explicit snapshot-completeness attestation is used. For batch-only snapshots, all current batch positions must share a common date, unit, and source run attested as complete. Product-level snapshots take precedence when at least as recent as batch records, preventing product totals from being added to batch rows.
+
+If demand is zero, the source history is incomplete, stock is stale/ambiguous, or sales/inventory units differ, no excess-quantity estimate is issued. Results are transparent decision support, not a trained model, monetary-loss estimate, or instruction to place/cancel an order. Incoming orders, lead times, seasonality, returns handling and expiry allocation are not yet modeled.

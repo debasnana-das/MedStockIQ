@@ -98,3 +98,8 @@ The demand baseline now uses expanding-window rolling-origin evaluation with mul
 ## Cross-upload inventory history ledger
 
 `GET /api/v1/inventory-history?organization_id=...` returns a tenant-scoped, read-only timeline from saved stock snapshots across separate uploads, with optional `as_of_date`, `start_date`, and `end_date` query parameters. Product and batch matching are conservative; generated IDs are run-local and are not treated as global identities. Repeated same-date balances are counted once, conflicts are left unresolved, mixed units are not converted, and product-level snapshots are kept separate from batch-level snapshots. The endpoint caps a query at 20,000 matched snapshots and asks for a narrower date window rather than returning partial history. See [cross-upload history API guidance](docs/profiling_api.md).
+
+
+## Overstock review
+
+A read-only rule-based review is available at `GET /api/v1/overstock-review?organization_id=...&sales_run_id=...&target_days_of_supply=30`. It uses one saved retail-sales run with a confirmed complete 28-day-or-longer reporting window and inventory snapshots from runs explicitly attested as complete. Stock must be fresh, have a known basis, and use units compatible with retail sales. The target days of supply is caller-provided, not a presumed pharmacy policy. When demand or stock evidence is incomplete, ambiguous or zero, no excess estimate is made. This is a transparent baseline rule and does not account for incoming orders, lead times, seasonality or monetary loss; see [overstock review API guidance](docs/profiling_api.md).

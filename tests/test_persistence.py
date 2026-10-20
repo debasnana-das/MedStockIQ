@@ -406,3 +406,60 @@ def test_persisted_inventory_history_reads_across_runs_with_tenant_scoping(datab
     assert {row["organization_id"] for row in observations} == {"ORG-HISTORY-TEST"}
     assert {row["quantity_on_hand"] for row in observations} == {12.0, 18.0}
     assert all(row["source_product_code"] == "SKU-01" for row in observations)
+
+
+
+def test_overstock_persistence_reads_selected_sales_run_and_scoped_inventory(database_engine) -> None:
+    from app.db.persistence import (
+        get_persisted_inventory_history_observations,
+        get_persisted_overstock_sales_run,
+    )
+
+    stock = _full_result("ORG-OVERSTOCK-TEST")
+    stock_options = _options("ORG-OVERSTOCK-TEST").model_copy(update={
+        "document_type": "inventory_report",
+        "snapshot_date": date(2026, 10, 15),
+        "inventory_snapshot_complete": True,
+    })
+    sales = _full_result("ORG-OVERSTOCK-TEST")
+    sales["tables"]["transactions"][0]["transaction_type"] = "retail_sale"
+    sales_options = NormalizationOptions(
+        organization_id="ORG-OVERSTOCK-TEST",
+        document_type="retail_sales",
+        sales_history_complete=True,
+        sales_history_start_date=date(2026, 9, 1),
+        sales_history_end_date=date(2026, 9, 30),
+    )
+    other = _full_result("ORG-OVERSTOCK-OTHER")
+    other_options = _options("ORG-OVERSTOCK-OTHER").model_copy(update={
+        "document_type": "inventory_report",
+        "inventory_snapshot_complete": True,
+    })
+    with Session(database_engine) as session:
+        stock_run_id = persist_normalization_result(
+            session, stock, _schema(), stock_options, "stock.csv", "csv", 512
+        )
+        sales_run_id = persist_normalization_result(
+            session, sales, _schema(), sales_options, "sales.csv", "csv", 512
+        )
+        persist_normalization_result(
+            session, other, _schema(), other_options, "other.csv", "csv", 512
+        )
+    with Session(database_engine) as session:
+        sales_run, sales_rows = get_persisted_overstock_sales_run(
+            session, "ORG-OVERSTOCK-TEST", sales_run_id
+        )
+        stock_rows, truncated = get_persisted_inventory_history_observations(
+            session, "ORG-OVERSTOCK-TEST", as_of_date=date(2026, 10, 20),
+            document_type="inventory_report",
+        )
+        wrong_org_run, _ = get_persisted_overstock_sales_run(
+            session, "ORG-OVERSTOCK-OTHER", sales_run_id
+        )
+    assert sales_run is not None and sales_run["document_type"] == "retail_sales"
+    assert sales_run["options"]["sales_history_complete"] is True
+    assert len(sales_rows) == 1
+    assert truncated is False
+    assert len(stock_rows) == 1 and stock_rows[0]["run_id"] == stock_run_id
+    assert stock_rows[0]["inventory_snapshot_complete"] is True
+    assert wrong_org_run is None

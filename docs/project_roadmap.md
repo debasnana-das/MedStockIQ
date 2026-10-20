@@ -33,6 +33,7 @@
 - [x] Add deterministic findings from normalization issues, key-field coverage, possible duplicates, ignored columns, unknown stock basis, and suspicious tax/discount values.
 - [x] Implement per-module readiness checks with explicit blockers and transparent sales-history guardrails.
 - [ ] Expand date, unit and cross-document consistency rules as more source formats and authorized sanitized files become available.
+- [x] Require an explicit inventory-snapshot completeness attestation before using stock balances for overstock review.
 - [x] Implement dated snapshot selection, duplicate/conflict/unit validation, basic snapshot-to-movement reconciliation, and batch-level expiry alerts.
 - [x] Return explicit insufficient_data statuses and provisional-value explanations where evidence is insufficient.
 - [x] Add a read-only cross-upload inventory-history ledger using conservative source-code/exact-attribute matching, with ambiguity/conflict reporting and tenant-scoped access.
@@ -47,7 +48,8 @@
 - [ ] Evaluate forecast performance using an authorized, verified retail-sales history and add ongoing error monitoring.
 - [ ] Evaluate alert usefulness and only then consider more complex models.
 - [x] Provide basic batch expiry alerts with evidence, severity windows and explicit provisional MRP-exposure semantics.
-- [ ] Build overstock findings and validated expiry-loss estimates with evidence, assumptions and uncertainty.
+- [x] Add a conservative overstock-review baseline using complete sales history, explicit target days of supply, fresh attested stock snapshots, and explicit insufficient-data outcomes.
+- [ ] Evaluate overstock alert usefulness and validate estimates against authorized business feedback; build expiry-loss estimates only with evidence and uncertainty.
 - [ ] Add stock-out only when current inventory and replenishment data are available.
 
 ## Phase 5 — Product interface
