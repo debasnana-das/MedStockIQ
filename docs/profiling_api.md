@@ -117,3 +117,12 @@ The evaluator blocks forecasts if the coverage flag is false, either boundary is
 For each eligible product/unit series, the evaluator compares a last-observed-day baseline and a 7-day seasonal-naive baseline on the final seven days of history. MAE, RMSE and WAPE are reported where defined. The selected baseline is refit on the full covered history to produce a seven-day daily forecast. Products with mixed units or insufficient training data are excluded and explained. Forecasts are labelled `baseline_only`; the evaluation is a single holdout, not rolling-origin validation or proof of operational accuracy.
 
 Baseline output does not calculate inventory risk or automatically trigger replenishment. Do not use these predictions for ordering decisions until completeness has been verified and the baseline has been compared with rolling-origin backtests on authorized data.
+
+
+## 10. Rolling-origin baseline evaluation
+
+The forecasting report now evaluates naïve baselines across expanding-window rolling-origin folds, followed by a separate final seven-day holdout. The complete-history confirmation and explicit inclusive start/end dates remain required.
+
+A report needs at least 49 calendar days: 28 initial training days, two seven-day rolling-origin validation windows, and a separate seven-day final holdout. Up to four rolling-origin windows are used, aligned to the declared window's end. Each rolling window trains only on dates before that window. Per-product baseline selection uses aggregated rolling-origin MAE (ties are broken by RMSE and model name); the final holdout is reported separately and does not determine which baseline is selected. The selected method is then refit to all confirmed history to forecast the next seven days.
+
+Per-product reports contain each rolling window's training/validation date boundaries and metrics, aggregate rolling-origin metrics, and final-holdout metrics. Top-level `model_comparison` metrics are macro-averages of per-product metrics to avoid pooling quantities across products with different units and scales. WAPE is `null` for a series with zero total actual demand. These methods and metrics remain simple benchmarks, not a guarantee of operational accuracy; rolling-origin evaluation should be repeated on authorized, verified real sales exports before decisions are based on the results.

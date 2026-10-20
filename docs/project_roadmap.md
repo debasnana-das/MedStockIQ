@@ -41,7 +41,9 @@
 - [x] Add daily retail-sales aggregation and naïve/7-day seasonal baseline comparison.
 - [x] Add a chronological 7-day holdout, MAE/RMSE/WAPE metrics, and 7-day baseline forecast.
 - [x] Require explicit complete-history confirmation and date boundaries before zero-filling or forecasting.
-- [ ] Add rolling-origin evaluation and compare forecast performance using an authorized, verified sales history.
+- [x] Add expanding-window rolling-origin evaluation with at least two validation windows and a separate untouched final holdout.
+- [x] Select a baseline using rolling-origin metrics, and report macro-averaged comparison metrics without pooling unlike product units.
+- [ ] Evaluate forecast performance using an authorized, verified retail-sales history and add ongoing error monitoring.
 - [ ] Evaluate alert usefulness and only then consider more complex models.
 - [x] Provide basic batch expiry alerts with evidence, severity windows and explicit provisional MRP-exposure semantics.
 - [ ] Build overstock findings and validated expiry-loss estimates with evidence, assumptions and uncertainty.

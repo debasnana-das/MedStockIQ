@@ -88,3 +88,8 @@ Normalization's `quality_report.inventory_analysis` contains current-position pr
 ## Demand forecasting baseline
 
 MedStockIQ includes an initial time-series benchmark for confirmed retail-sale history: daily per-product aggregation, a chronological 7-day holdout, naive-last-value and seven-day seasonal-naive baselines, MAE/RMSE/WAPE metrics, and a 7-day daily baseline forecast. Zero-sales days are filled only when the caller explicitly confirms the extract is complete for a continuous date window. Forecasts are reported as `baseline_only` and are not production-validated; rolling-origin evaluation remains future work. See [demand baseline API guidance](docs/profiling_api.md).
+
+
+## Rolling-origin forecast evaluation
+
+The demand baseline now uses expanding-window rolling-origin evaluation with multiple seven-day validation windows before a separate final seven-day holdout. Per-product baseline selection is based on rolling-origin MAE (with RMSE/model-name tie-breaks), and the final holdout remains a separate report. At least 49 days of explicitly complete history are required. Aggregate metrics are macro-averaged across products rather than pooling quantities with different units/scales. Evaluation on authorized real sales history and ongoing error monitoring remain future work.
