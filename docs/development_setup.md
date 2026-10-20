@@ -53,6 +53,12 @@ python -m synthetic_data.generate_dataset --output-dir data/synthetic --seed 42
 
 The output directory is git-ignored. Keep generated files local unless there is a specific reason to commit a small, reviewed, fully synthetic fixture. Never commit real business data.
 
+## Synthetic end-to-end API demo
+
+See [the synthetic demo workflow](synthetic_demo.md) for source-shaped uploads and a script that executes profile → schema confirmation → normalization/persistence → inventory history → overstock review against the running API.
+
+`inventory_stock_basis` is optional caller-confirmed context for `inventory_report` uploads. Choose `physical` or `system` only after the source's stock basis is verified; otherwise leave it unset so the normalized basis remains `unknown`.
+
 ## Tests
 
 ```powershell

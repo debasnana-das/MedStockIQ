@@ -44,6 +44,7 @@ Form fields:
   - `organization_id` (default `ORG-UNSPECIFIED` for preview-only processing)
   - `document_type`: `purchase_invoice`, `outward_invoice`, `retail_sales`, `inventory_report`, or `unknown`
   - `source_file_id`, `document_number`, `document_date`, `snapshot_date`, `counterparty_id`, and `currency_code` as available/confirmed.
+  - `inventory_snapshot_complete` (default `false`) and `inventory_stock_basis` (`physical` or `system`, default unknown) for `inventory_report` uploads only, when explicitly attested by the source owner.
 - `persist`: `false` by default. Set `true` to save the result, subject to verified organization membership and writer role.
 
 When an organization ID is supplied, the API checks the signed-in user's active membership; a caller cannot gain access by inventing or copying an ID. Saving requires `owner`, `admin`, or `member` in that organization. `viewer` membership is read-only. The uploaded file must have the same column names and order as the confirmed profile. Files that reach the 20,000-row profile cap are currently rejected by normalization until full-file validation is implemented.

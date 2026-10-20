@@ -36,6 +36,8 @@ Tenant IDs are checked against the authenticated account's active membership on 
 
 See [Development setup](docs/development_setup.md) and [the profiling, confirmation and normalization API guide](docs/profiling_api.md).
 
+For the source-shaped, end-to-end API demo (profile, schema confirmation, persistence, expiry, demand baseline, inventory history and overstock review), follow [the synthetic demo workflow](docs/synthetic_demo.md).
+
 Generate local synthetic data:
 
 ```powershell

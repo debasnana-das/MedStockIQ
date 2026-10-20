@@ -14,7 +14,7 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schema.confirmation import (
     MONTH_YEAR_FORMATS,
@@ -38,6 +38,8 @@ class NormalizationOptions(BaseModel):
     snapshot_date: date | None = None
     # Attest true only when every in-scope on-hand position is represented.
     inventory_snapshot_complete: bool = False
+    # Caller-attested basis for a complete inventory snapshot; absent means unknown.
+    inventory_stock_basis: Literal["physical", "system"] | None = None
     counterparty_id: str | None = Field(default=None, max_length=200)
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     # Only confirm true when this export includes all sale lines and all zero-sale
@@ -45,6 +47,15 @@ class NormalizationOptions(BaseModel):
     sales_history_complete: bool = False
     sales_history_start_date: date | None = None
     sales_history_end_date: date | None = None
+
+
+    @model_validator(mode="after")
+    def validate_inventory_stock_basis(self) -> "NormalizationOptions":
+        if self.inventory_stock_basis is not None and self.document_type != "inventory_report":
+            raise ValueError(
+                "inventory_stock_basis is only valid when document_type is inventory_report."
+            )
+        return self
 
 
 _NUMERIC_FIELDS = {
@@ -808,7 +819,7 @@ def normalize_dataframe(
                             "batch_record_id": batch["batch_record_id"] if batch else None,
                             "quantity_on_hand": stock_quantity,
                             "quantity_unit": selected_mapping.quantity_unit,
-                            "stock_basis": "unknown",
+                            "stock_basis": options.inventory_stock_basis or "unknown",
                         }
                     )
 
