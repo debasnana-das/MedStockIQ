@@ -36,6 +36,8 @@ class NormalizationOptions(BaseModel):
     document_number: str | None = Field(default=None, max_length=200)
     document_date: date | None = None
     snapshot_date: date | None = None
+    # Attest true only when every in-scope on-hand position is represented.
+    inventory_snapshot_complete: bool = False
     counterparty_id: str | None = Field(default=None, max_length=200)
     currency_code: str | None = Field(default=None, min_length=3, max_length=3)
     # Only confirm true when this export includes all sale lines and all zero-sale

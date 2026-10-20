@@ -312,6 +312,7 @@ def get_persisted_inventory_history_observations(
     start_date: date | None = None,
     end_date: date | None = None,
     row_limit: int = 20_000,
+    document_type: str | None = None,
 ) -> tuple[list[dict[str, Any]], bool]:
     """Read cross-run snapshot evidence for one tenant, with an explicit safety cap.
 
@@ -339,6 +340,8 @@ def get_persisted_inventory_history_observations(
             NormalizedBatch.expiry_date.label("expiry_date"),
             NormalizedBatch.manufacturing_date.label("manufacturing_date"),
             NormalizationRun.source_file_name.label("source_file_name"),
+            NormalizationRun.document_type.label("document_type"),
+            NormalizationRun.options_json.label("run_options"),
         )
         .select_from(InventorySnapshot)
         .join(
@@ -362,6 +365,8 @@ def get_persisted_inventory_history_observations(
             InventorySnapshot.snapshot_date <= as_of_date,
         )
     )
+    if document_type is not None:
+        statement = statement.where(NormalizationRun.document_type == document_type)
     if start_date is not None:
         statement = statement.where(InventorySnapshot.snapshot_date >= start_date)
     if end_date is not None:
@@ -398,5 +403,80 @@ def get_persisted_inventory_history_observations(
                 row["manufacturing_date"].isoformat() if row["manufacturing_date"] else None
             ),
             "source_file_name": row["source_file_name"],
+            "document_type": row["document_type"],
+            "inventory_snapshot_complete": bool(
+                (row["run_options"] or {}).get("inventory_snapshot_complete", False)
+            ),
         })
     return observations, truncated
+
+
+def get_persisted_overstock_sales_run(
+    session: Session, organization_id: str, run_id: str,
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    """Read one selected sales run after matching its tenant."""
+    run = session.scalar(select(NormalizationRun).where(
+        NormalizationRun.run_id == run_id,
+        NormalizationRun.organization_id == organization_id,
+    ))
+    if run is None:
+        return None, []
+    statement = (
+        select(
+            InventoryTransaction.run_id.label("run_id"),
+            InventoryTransaction.transaction_id.label("transaction_id"),
+            InventoryTransaction.transaction_date.label("transaction_date"),
+            InventoryTransaction.transaction_type.label("transaction_type"),
+            InventoryTransaction.product_id.label("product_id"),
+            InventoryTransaction.batch_record_id.label("batch_record_id"),
+            InventoryTransaction.quantity.label("quantity"),
+            InventoryTransaction.effective_quantity.label("effective_quantity"),
+            InventoryTransaction.free_quantity.label("free_quantity"),
+            InventoryTransaction.quantity_unit.label("quantity_unit"),
+            InventoryTransaction.source_row_number.label("source_row_number"),
+            NormalizedProduct.source_product_code.label("source_product_code"),
+            NormalizedProduct.product_name.label("product_name"),
+            NormalizedProduct.manufacturer_name.label("manufacturer_name"),
+            NormalizedProduct.hsn_code.label("hsn_code"),
+            NormalizedProduct.pack_description.label("pack_description"),
+        )
+        .select_from(InventoryTransaction)
+        .join(
+            NormalizedProduct,
+            (NormalizedProduct.run_id == InventoryTransaction.run_id)
+            & (NormalizedProduct.product_id == InventoryTransaction.product_id),
+        )
+        .where(
+            InventoryTransaction.run_id == run_id,
+            InventoryTransaction.organization_id == organization_id,
+            NormalizedProduct.organization_id == organization_id,
+        )
+        .order_by(InventoryTransaction.source_row_number, InventoryTransaction.transaction_id)
+    )
+    sales_rows = []
+    for row in session.execute(statement).mappings():
+        sales_rows.append({
+            "run_id": row["run_id"],
+            "transaction_id": row["transaction_id"],
+            "transaction_date": row["transaction_date"].isoformat() if row["transaction_date"] else None,
+            "transaction_type": row["transaction_type"],
+            "product_id": row["product_id"],
+            "batch_record_id": row["batch_record_id"],
+            "quantity": _number(row["quantity"]),
+            "effective_quantity": _number(row["effective_quantity"]),
+            "free_quantity": _number(row["free_quantity"]),
+            "quantity_unit": row["quantity_unit"],
+            "source_row_number": row["source_row_number"],
+            "source_product_code": row["source_product_code"],
+            "product_name": row["product_name"],
+            "manufacturer_name": row["manufacturer_name"],
+            "hsn_code": row["hsn_code"],
+            "pack_description": row["pack_description"],
+        })
+    return {
+        "run_id": run.run_id,
+        "organization_id": run.organization_id,
+        "document_type": run.document_type,
+        "source_file_name": run.source_file_name,
+        "options": dict(run.options_json or {}),
+    }, sales_rows

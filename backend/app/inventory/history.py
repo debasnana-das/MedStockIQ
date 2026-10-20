@@ -86,12 +86,68 @@ def _sorted_values(values: set[str]) -> list[str]:
     return sorted(values)
 
 
+def resolve_product_identity_keys(
+    products: dict[tuple[str, str], dict[str, Any]],
+) -> tuple[
+    dict[tuple[str, str], tuple[Any, ...]],
+    dict[tuple[str, str], str],
+    dict[tuple[Any, ...], set[str]],
+]:
+    """Resolve product identity with one policy shared by ledger and risk modules."""
+    code_groups: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for entity, product in products.items():
+        code = _norm(product.get("source_product_code"))
+        if code:
+            code_groups[code].append(entity)
+
+    code_conflicts: dict[str, list[str]] = {}
+    for code, entities in code_groups.items():
+        conflicting_fields = []
+        for field in PRODUCT_CONFLICT_GUARD_FIELDS:
+            values = {_norm(products[entity].get(field)) for entity in entities}
+            values.discard("")
+            if len(values) > 1:
+                conflicting_fields.append(field)
+        if conflicting_fields:
+            code_conflicts[code] = conflicting_fields
+
+    product_keys: dict[tuple[str, str], tuple[Any, ...]] = {}
+    product_methods: dict[tuple[str, str], str] = {}
+    for entity, product in products.items():
+        code = _norm(product.get("source_product_code"))
+        exact = _complete_product_identity(product)
+        if code and code not in code_conflicts:
+            key = ("source_code", code)
+            method = "source_product_code"
+        elif exact:
+            key = ("exact_attributes", *exact)
+            method = "exact_product_attributes"
+            if code and code in code_conflicts:
+                method = "exact_attributes_after_code_conflict"
+        else:
+            key = ("run_local_product", entity[0], entity[1])
+            method = "ambiguous_source_product_code" if code else "run_local_only"
+        product_keys[entity] = key
+        product_methods[entity] = method
+
+    identity_runs: dict[tuple[Any, ...], set[str]] = defaultdict(set)
+    for entity, key in product_keys.items():
+        identity_runs[key].add(entity[0])
+    return product_keys, product_methods, identity_runs
+
+
+def product_identity_reference(organization_id: str, identity_key: tuple[Any, ...]) -> str:
+    """Return the deterministic reference used for a conservative product identity."""
+    return _identity_ref(organization_id, identity_key)
+
+
 def build_inventory_history_ledger(
     observations: list[dict[str, Any]],
     *,
     organization_id: str,
     as_of_date: date | None = None,
     max_series: int = 100,
+    identity_catalog: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build inventory timelines from persisted snapshot rows for one organization.
 
@@ -106,7 +162,7 @@ def build_inventory_history_ledger(
     conflicting values leave that date's quantity unknown.
     """
     as_of = as_of_date or date.today()
-    series_limit = max(1, min(int(max_series), 500))
+    series_limit = max(1, min(int(max_series), 20_000))
     warnings: list[str] = []
     invalid_rows = 0
     future_snapshot_count = 0
@@ -161,46 +217,22 @@ def build_inventory_history_ledger(
                     )
                 },
             }
+    for row in identity_catalog or []:
+        entity = (_text(row.get("run_id")), _text(row.get("product_id")))
+        if all(entity) and entity not in products:
+            products[entity] = {
+                "run_id": entity[0],
+                "product_id": entity[1],
+                **{
+                    field: _text(row.get(field)) or None
+                    for field in (
+                        "source_product_code", "product_name", "manufacturer_name",
+                        "hsn_code", "pack_description",
+                    )
+                },
+            }
 
-    code_groups: dict[str, list[tuple[str, str]]] = defaultdict(list)
-    for entity, product in products.items():
-        code = _norm(product.get("source_product_code"))
-        if code:
-            code_groups[code].append(entity)
-
-    code_conflicts: dict[str, list[str]] = {}
-    for code, entities in code_groups.items():
-        conflicting_fields = []
-        for field in PRODUCT_CONFLICT_GUARD_FIELDS:
-            values = {_norm(products[entity].get(field)) for entity in entities}
-            values.discard("")
-            if len(values) > 1:
-                conflicting_fields.append(field)
-        if conflicting_fields:
-            code_conflicts[code] = conflicting_fields
-
-    product_keys: dict[tuple[str, str], tuple[Any, ...]] = {}
-    product_methods: dict[tuple[str, str], str] = {}
-    for entity, product in products.items():
-        code = _norm(product.get("source_product_code"))
-        exact = _complete_product_identity(product)
-        if code and code not in code_conflicts:
-            key = ("source_code", code)
-            method = "source_product_code"
-        elif exact:
-            key = ("exact_attributes", *exact)
-            method = "exact_product_attributes"
-            if code and code in code_conflicts:
-                method = "exact_attributes_after_code_conflict"
-        else:
-            key = ("run_local_product", entity[0], entity[1])
-            method = "ambiguous_source_product_code" if code else "run_local_only"
-        product_keys[entity] = key
-        product_methods[entity] = method
-
-    product_identity_runs: dict[tuple[Any, ...], set[str]] = defaultdict(set)
-    for entity, key in product_keys.items():
-        product_identity_runs[key].add(entity[0])
+    product_keys, product_methods, product_identity_runs = resolve_product_identity_keys(products)
 
     # Resolve batch identities only after products have been matched conservatively.
     batches: dict[tuple[str, str], dict[str, Any]] = {}
