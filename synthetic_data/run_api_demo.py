@@ -420,7 +420,7 @@ def main() -> int:
                     "overstock": overstock,
                 },
             )
-            print("\\nDemo finished. All records are fictional; results test software behavior only.")
+            print("\nDemo finished. All records are fictional; results test software behavior only.")
             print(f"HTML report: {report_path.resolve()}")
             print(f"Saved normalization run IDs: purchase={purchase_run['normalization_run_id']}, "
                   f"inventory={inventory_run['normalization_run_id']}, sales={sales_run['normalization_run_id']}")
