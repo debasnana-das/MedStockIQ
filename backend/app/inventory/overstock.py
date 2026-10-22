@@ -15,6 +15,8 @@ from app.inventory.history import (
 ENGINE_VERSION = "1.0.0"
 MIN_HISTORY_DAYS = 28
 STALE_AFTER_DAYS = 30
+LOW_SALES_ACTIVITY_THRESHOLD = 0.2
+EXTREME_DAYS_OF_SUPPLY = 365
 
 
 def _date(value: Any) -> date | None:
@@ -216,14 +218,18 @@ def evaluate_overstock_review(
             "target_days_of_supply": target_days_of_supply,
             "minimum_sales_history_days": MIN_HISTORY_DAYS,
             "stale_snapshot_after_days": STALE_AFTER_DAYS,
+            "low_sales_activity_threshold_fraction": LOW_SALES_ACTIVITY_THRESHOLD,
+            "extreme_days_of_supply_review_threshold": EXTREME_DAYS_OF_SUPPLY,
             "excess_rule": "max(0, confirmed on-hand quantity - average daily sales multiplied by caller-supplied target days of supply)",
         },
         "findings": [],
         "blockers": blockers,
         "warnings": [
             "This is a transparent average-demand rule, not a trained or validated forecasting model.",
+            "Observed sales may be lower than true demand during stock-outs; no lost-demand correction is applied.",
             "Pending orders, lead times, seasonality, promotions, returns policy and expiry allocation are not modeled.",
             "Estimated excess is not a monetary-loss estimate or an order/cancellation instruction.",
+            "Per-product review flags are screening cues. They do not establish stock-outs or latent demand by themselves.",
         ],
         "excluded_row_reasons": dict(sorted(invalid.items())),
         "limitations": [
@@ -298,15 +304,23 @@ def evaluate_overstock_review(
                              "reason": "Sales and stock use different units; no conversion is inferred.",
                              "sales_quantity_unit": demand_unit, "inventory_quantity_unit": stock["unit"]})
             continue
+        days_with_sales = sum(v > 0 for v in daily[key].values())
+        review_flags: list[str] = []
+        if days and days_with_sales / days < LOW_SALES_ACTIVITY_THRESHOLD:
+            review_flags.append(
+                f"Sparse observed sales: positive sales on {days_with_sales} of {days} history days; "
+                "the days-of-supply estimate may be unstable."
+            )
         base = {
             "product_identity_ref": ref, "product_name": name, "source_product_code": code,
             "inventory_quantity": _r(stock["quantity"]), "quantity_unit": stock["unit"],
             "inventory_snapshot_date": stock["date"], "inventory_snapshot_age_days": stock["age"],
             "inventory_basis": stock["basis"], "stock_level": stock["level"],
             "batch_position_count": stock["batch_count"], "sales_row_count": len(rows),
-            "sales_history_days": days, "days_with_sales": sum(v > 0 for v in daily[key].values()),
+            "sales_history_days": days, "days_with_sales": days_with_sales,
             "total_quantity_sold": _r(sold), "average_daily_demand": _r(adu),
             "target_days_of_supply": _r(float(target_days_of_supply)),
+            "review_flags": review_flags,
         }
         if sold <= 0:
             findings.append({**base, "status": "insufficient_demand_signal",
@@ -316,11 +330,17 @@ def evaluate_overstock_review(
             continue
         target = adu * float(target_days_of_supply)
         excess = max(0.0, float(stock["quantity"]) - target)
+        days_of_supply = float(stock["quantity"]) / adu
+        if days_of_supply > EXTREME_DAYS_OF_SUPPLY:
+            review_flags.append(
+                "Estimated days of supply exceeds one year; validate inventory and observed demand before interpreting it."
+            )
         findings.append({
             **base,
             "target_stock_quantity": _r(target),
-            "days_of_supply": _r(float(stock["quantity"]) / adu),
+            "days_of_supply": _r(days_of_supply),
             "estimated_excess_quantity": _r(excess),
+            "review_flags": review_flags,
             "status": "above_target" if excess > 0.000001 else "within_target",
             "reason_code": "stock_above_target" if excess > 0.000001 else "stock_within_target",
             "reason": "On-hand stock compared with the configured target supply period.",
