@@ -32,3 +32,11 @@ def test_root_serves_local_dashboard_and_assets() -> None:
         assert "provisional_reasons" in script.text
         assert "review_flags" in script.text
         assert "Review high percentage errors" in script.text
+        assert "table-extra-wide" in script.text
+        assert "Scroll horizontally to view all columns." in script.text
+        assert "Age at report date (days)" in script.text
+        assert "Historical snapshot" in script.text
+        assert "Historical report — not current stock position" in script.text
+        assert "Run-specific readiness" in script.text
+        assert "Report date (as of)" in script.text
+        assert "table-extra-wide" in stylesheet.text
