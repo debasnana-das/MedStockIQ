@@ -105,7 +105,7 @@
   function renderOrgSelect() {
     const select = $("#orgSelect");
     if (!state.organizations.length) { select.innerHTML = '<option value="">No organization yet</option>'; select.disabled = true; return; }
-    select.innerHTML = state.organizations.map(org => '<option value="' + esc(org.organization_id) + '">' + esc(org.display_name) + ' · ' + esc(org.role) + "</option>").join("");
+    select.innerHTML = state.organizations.map(org => '<option value="' + esc(org.organization_id) + '">' + esc(org.display_name) + ' · ' + esc(org.organization_id.slice(0, 8)) + ' · ' + esc(org.role) + "</option>").join("");
     select.value = state.organizationId; select.disabled = false;
   }
   async function refreshRuns() {
