@@ -26,6 +26,8 @@ def test_root_serves_local_dashboard_and_assets() -> None:
         assert "Analysis data sources" in script.text
         assert "Analysis dates do not match" in script.text
         assert "Snapshot / age" in script.text
+        assert "Distinct snapshot dates" in script.text
+        assert "Single snapshot only" in script.text
         assert "provisional_reasons" in script.text
         assert "review_flags" in script.text
         assert "Review high percentage errors" in script.text
