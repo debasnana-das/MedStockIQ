@@ -12,7 +12,11 @@ def _result(*, qty: float = 5, expiry: str = "2026-11-05", snapshot_date: str = 
             stock_basis: str = "physical", transactions: list[dict] | None = None) -> dict:
     return {
         "tables": {
-            "products": [{"product_id": "P1", "product_name": "Synthetic Medicine"}],
+            "products": [{
+                "product_id": "P1",
+                "source_product_code": "SKU-001",
+                "product_name": "Synthetic Medicine",
+            }],
             "batches": [{
                 "batch_record_id": "B1", "product_id": "P1", "batch_code": "LOT-A",
                 "expiry_date": expiry, "expiry_date_precision": "day",
@@ -42,6 +46,7 @@ def test_near_expiry_alert_reports_quantity_days_and_qualified_mrp_exposure() ->
     assert alert["severity"] == "high"
     assert alert["days_to_expiry"] == 19
     assert alert["quantity_on_hand"] == 5
+    assert alert["source_product_code"] == "SKU-001"
     assert alert["indicative_mrp_value"] == 100
     assert alert["currency_code"] == "INR"
     assert alert["confidence"] == "based_on_available_records"
