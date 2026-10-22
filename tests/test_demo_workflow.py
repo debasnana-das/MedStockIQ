@@ -153,7 +153,17 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
         params={"organization_id": organization_id, "as_of_date": as_of.isoformat()},
     )
     assert history.status_code == 200, history.text
-    assert history.json()["series"]
+    history_payload = history.json()
+    assert history_payload["as_of_date"] == as_of.isoformat()
+    assert history_payload["series"]
+    # Every series exposes product metadata through the documented nested object.
+    assert all(isinstance(item.get("product"), dict) for item in history_payload["series"])
+    assert all(item["product"].get("product_name") for item in history_payload["series"])
+    assert all(item["product"].get("source_product_code") for item in history_payload["series"])
+    for item in history_payload["series"]:
+        if item["latest_quantity_known"] is False:
+            latest = item["latest_observation"]
+            assert latest["status"] == "conflict" or item["unit_status"] == "conflict"
 
     overstock = client.get(
         "/api/v1/overstock-review",
@@ -167,11 +177,18 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     )
     assert overstock.status_code == 200, overstock.text
     report = overstock.json()
+    assert report["as_of_date"] == as_of.isoformat()
     assert report["summary"]["above_target_count"] > 0
     assert any(
         item.get("source_product_code") == "SRC-004" and item["status"] == "above_target"
         for item in report["findings"]
     )
+    for item in report["findings"]:
+        if item.get("inventory_snapshot_date"):
+            assert item["inventory_snapshot_date"] <= as_of.isoformat()
+        if item.get("total_quantity_sold") is not None and item.get("average_daily_demand") is not None:
+            expected_adu = item["total_quantity_sold"] / item["sales_history_days"]
+            assert abs(item["average_daily_demand"] - expected_adu) < 0.00001
 
     saved_runs = client.get(
         "/api/v1/normalization-runs",
