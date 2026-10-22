@@ -74,3 +74,15 @@ With the default seed and date, the workflow should report nonzero normalized sa
 Retail sales are the observed fulfilled quantities in the synthetic simulation. During simulated stock-outs, actual demand can exceed observed sales. The endpoint is a conservative arithmetic comparison against a selected sales window, not a demand-aware order recommendation. Purchase orders, supplier lead times, substitutions, returns, clinical suitability, and regulatory constraints are not incorporated into the current overstock review.
 
 The two `DO_NOT_USE_AS_INPUT` oracle files from the internal generator are temporary evaluation artifacts. Never use the truth/label columns as model features. Synthetic tests do not validate model accuracy for real pharmacy data.
+
+## 6. Local HTML report
+
+After the API workflow completes, the runner writes a self-contained HTML report to `data/demo-report.html` by default. Open that file in a browser to review normalization run summaries, expiry alerts, baseline forecast metrics and daily predictions, inventory-history coverage, and overstock findings.
+
+You can choose another local path with `--report-path`:
+
+```powershell
+python -m synthetic_data.run_api_demo --register --seed 42 --as-of-date 2026-09-30 --report-path data/reports/medstockiq-demo.html
+```
+
+The report uses only results returned by the local API, has no external assets or network calls, and escapes source-derived text before rendering. Keep generated reports local; do not commit business data or reports made from authorized real pharmacy records to Git.
