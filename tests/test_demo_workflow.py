@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import date, timedelta
 from pathlib import Path
 
 import pytest
@@ -128,7 +128,28 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     assert inventory_run["summary"]["inventory_snapshot_count"] > 0
     assert sales_profile["row_count_profiled"] == 365 * 8
     assert sales_run["summary"]["transaction_count"] == 365 * 8
-    assert sales_run["quality_report"]["forecasting_baseline"]["status"] != "insufficient_data"
+    baseline = sales_run["quality_report"]["forecasting_baseline"]
+    assert baseline["status"] != "insufficient_data"
+    assert baseline["coverage"]["start_date"] == first_date.isoformat()
+    assert baseline["coverage"]["end_date"] == as_of.isoformat()
+    sales_products = {
+        row["product_id"]: row for row in sales_run["previews"]["products"]
+    }
+    forecast_series_by_code = {
+        sales_products[row["product_id"]]["source_product_code"]: row
+        for row in baseline["series"]
+    }
+    for forecast_row in baseline["forecasts"]:
+        expected_dates = [
+            (as_of + timedelta(days=offset)).isoformat()
+            for offset in range(1, 8)
+        ]
+        assert forecast_row["trained_through_date"] == as_of.isoformat()
+        assert [item["date"] for item in forecast_row["daily_forecast"]] == expected_dates
+        assert abs(
+            forecast_row["predicted_total_quantity"]
+            - sum(item["predicted_quantity"] for item in forecast_row["daily_forecast"])
+        ) < 0.00001
 
     inventory_analysis = inventory_run["quality_report"]["inventory_analysis"]
     assert inventory_analysis["as_of_date"] == as_of.isoformat()
@@ -138,8 +159,28 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
         if alert["batch_code"] == "B-005-0075"
     )
     assert october_batch_alert["alert_type"] == "expires_within_90_days"
+    assert october_batch_alert["source_product_code"] == "SRC-005"
+    assert october_batch_alert["days_to_expiry"] == (
+        date.fromisoformat(october_batch_alert["expiry_date"]) - as_of
+    ).days
     assert all(row["stock_basis"] == "physical"
                for row in inventory_run["previews"]["inventory_snapshots"])
+
+    inventory_products = {
+        row["product_id"]: row for row in inventory_run["previews"]["products"]
+    }
+    inventory_positions = inventory_analysis["current_positions_preview"]
+    assert not inventory_analysis["current_positions_truncated"]
+    assert inventory_analysis["summary"]["current_position_count"] == len(inventory_positions)
+    assert all(date.fromisoformat(row["snapshot_date"]) <= as_of for row in inventory_positions)
+    position_by_product_batch = {
+        (row["product_id"], row["batch_code"]): row for row in inventory_positions
+    }
+    for alert in inventory_analysis["expiry_alerts"]:
+        assert alert["source_product_code"] == inventory_products[alert["product_id"]]["source_product_code"]
+        position = position_by_product_batch[(alert["product_id"], alert["batch_code"])]
+        assert alert["quantity_on_hand"] == position["quantity_on_hand"]
+        assert alert["quantity_unit"] == position["quantity_unit"]
 
     saved_run = client.get(
         f"/api/v1/normalization-runs/{inventory_run['normalization_run_id']}",
@@ -156,6 +197,13 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     history_payload = history.json()
     assert history_payload["as_of_date"] == as_of.isoformat()
     assert history_payload["series"]
+    assert history_payload["summary"]["input_snapshot_count"] == inventory_run["summary"]["inventory_snapshot_count"]
+    assert {
+        point["snapshot_date"]
+        for item in history_payload["series"]
+        for point in item["history"]
+        if point.get("snapshot_date")
+    } == {as_of.isoformat()}
     # Every series exposes product metadata through the documented nested object.
     assert all(isinstance(item.get("product"), dict) for item in history_payload["series"])
     assert all(item["product"].get("product_name") for item in history_payload["series"])
@@ -179,10 +227,32 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     report = overstock.json()
     assert report["as_of_date"] == as_of.isoformat()
     assert report["summary"]["above_target_count"] > 0
+    assert report["as_of_date"] == inventory_analysis["as_of_date"] == history_payload["as_of_date"]
     assert any(
         item.get("source_product_code") == "SRC-004" and item["status"] == "above_target"
         for item in report["findings"]
     )
+
+    stock_quantity_by_code_unit = {}
+    for position in inventory_positions:
+        code = inventory_products[position["product_id"]]["source_product_code"]
+        key = (code, position["quantity_unit"].casefold())
+        stock_quantity_by_code_unit[key] = stock_quantity_by_code_unit.get(key, 0) + position["quantity_on_hand"]
+    findings_by_code = {
+        item["source_product_code"]: item
+        for item in report["findings"]
+        if item.get("source_product_code") and item.get("inventory_quantity") is not None
+    }
+    for code, finding in findings_by_code.items():
+        key = (code, finding["quantity_unit"].casefold())
+        if key in stock_quantity_by_code_unit:
+            assert abs(finding["inventory_quantity"] - stock_quantity_by_code_unit[key]) < 0.00001
+        if code in forecast_series_by_code and finding.get("average_daily_demand") is not None:
+            assert abs(
+                finding["average_daily_demand"]
+                - forecast_series_by_code[code]["average_daily_demand"]
+            ) < 0.00001
+
     for item in report["findings"]:
         if item.get("inventory_snapshot_date"):
             assert item["inventory_snapshot_date"] <= as_of.isoformat()
