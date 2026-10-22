@@ -120,3 +120,24 @@ def test_no_matching_stock_and_product_code_conflicts_do_not_fake_an_excess():
     report = evaluate(stock=stock, sale=sale)
     assert report["summary"]["above_target_count"] == 0
     assert report["summary"]["insufficient_data_count"] >= 1
+
+
+def test_sparse_sales_and_extreme_days_of_supply_are_flagged_without_changing_arithmetic():
+    rows = sales(quantity=0)
+    rows[0]["quantity"] = 1
+    rows[0]["effective_quantity"] = 1
+    report = evaluate(stock=inventory(quantity=5000), sale=rows)
+    row = report["findings"][0]
+
+    assert row["status"] == "above_target"
+    assert row["days_of_supply"] > 365
+    assert row["days_with_sales"] == 1
+    assert any("Sparse observed sales" in flag for flag in row["review_flags"])
+    assert any("exceeds one year" in flag for flag in row["review_flags"])
+    assert any("stock-outs" in warning for warning in report["warnings"])
+
+
+def test_regular_observed_sales_do_not_receive_sparse_or_extreme_supply_flags():
+    row = evaluate()["findings"][0]
+    assert row["days_with_sales"] == 28
+    assert row["review_flags"] == []
