@@ -165,6 +165,13 @@
     try { return new Date(value + (String(value).length === 10 ? "T00:00:00" : "")).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }); }
     catch { return String(value); }
   }
+  function dayAge(asOfDate, snapshotDate) {
+    if (!asOfDate || !snapshotDate) return "—";
+    const asOf = Date.parse(String(asOfDate).slice(0, 10) + "T00:00:00Z");
+    const snapshot = Date.parse(String(snapshotDate).slice(0, 10) + "T00:00:00Z");
+    if (!Number.isFinite(asOf) || !Number.isFinite(snapshot) || snapshot > asOf) return "—";
+    return Math.floor((asOf - snapshot) / 86400000);
+  }
   function renderView() {
     $$ (".nav-item").forEach(button => button.classList.toggle("active", button.dataset.view === state.view));
     const titles = { dashboard: "Overview", upload: "Import & analyze", history: "Inventory history", reports: "Insights & reports", workspace: "Create workspace" };
@@ -436,60 +443,244 @@
     observer.observe($("#mainContent"),{childList:true,subtree:true});
   }
   async function renderHistory() {
-    const run=state.latestInventoryRun, asOf=run?.options_summary?.snapshot_date||state.latestInventory?.previews?.inventory_snapshots?.[0]?.snapshot_date||todayISO();
-    if(!state.inventoryHistory&&run){
-      try{state.inventoryHistory=await api("/api/v1/inventory-history?organization_id="+encodeURIComponent(state.organizationId)+"&as_of_date="+encodeURIComponent(asOf));}
-      catch(error){state.inventoryHistory={status:"unavailable",error:error.message,series:[]};}
+    const run = state.latestInventoryRun;
+    const asOf = run?.options_summary?.snapshot_date
+      || state.latestInventory?.previews?.inventory_snapshots?.[0]?.snapshot_date
+      || todayISO();
+    if (!state.inventoryHistory && run) {
+      try {
+        state.inventoryHistory = await api(
+          "/api/v1/inventory-history?organization_id=" + encodeURIComponent(state.organizationId)
+          + "&as_of_date=" + encodeURIComponent(asOf)
+        );
+      } catch (error) {
+        state.inventoryHistory = { status: "unavailable", error: error.message, series: [], warnings: [] };
+      }
     }
-    const history=state.inventoryHistory,series=history?.series||[];
-    const rows=series.slice(0,100).map(item=>{
-      const latest=item.latest_observation||{};
-      return [item.product_name||item.identity_ref,item.source_product_code||"—",item.inventory_level,latest.snapshot_date||"—",
-        latest.quantity_on_hand_known===false||latest.status==="conflict"?"Unknown (conflict)":latest.quantity_on_hand,
-        item.quantity_units?.join(", ")||latest.quantity_unit||"—",item.series_status];
+    const history = state.inventoryHistory;
+    const series = history?.series || [];
+    const rows = series.slice(0, 100).map(item => {
+      const latest = item.latest_observation || {};
+      const product = item.product || {};
+      // latest_quantity_known is a series-level field; the point itself has no such field.
+      const latestKnown = item.latest_quantity_known !== false && latest.status !== "conflict";
+      const batchDetails = [
+        ...(item.batch_codes || []),
+        ...(item.expiry_dates || []).map(expiry => "expiry " + expiry)
+      ].join(" · ") || "—";
+      return [
+        product.product_name || item.identity_ref,
+        product.source_product_code || "—",
+        item.inventory_level,
+        batchDetails,
+        latest.snapshot_date || "—",
+        dayAge(history?.as_of_date || asOf, latest.snapshot_date),
+        latestKnown ? latest.quantity_on_hand : "Unknown (conflict / unit ambiguity)",
+        item.quantity_units?.join(", ") || latest.quantity_unit || "—",
+        item.series_status
+      ];
     });
-    $("#mainContent").innerHTML=pageHeader("STOCK SNAPSHOTS","Inventory history","A conservative ledger across saved stock snapshots. It never reconstructs on-hand balances from invoices alone.",'<button class="secondary-button" data-action="refresh-workspace">↻ Refresh</button>')+
-      '<section class="panel">'+panelHeading("Snapshot ledger","Report date: "+dateLabel(history?.as_of_date||asOf))+
-      (history?'<div class="metric-line"><span>Ledger status</span><strong>'+badge(history.status)+'</strong></div><div class="metric-line"><span>Inventory observations</span><strong>'+esc(nice(history.summary?.input_snapshot_count))+'</strong></div><div class="metric-line"><span>Derived product / batch series</span><strong>'+esc(nice(history.summary?.series_returned??series.length))+'</strong></div>'+
-      (history.error?'<div class="form-message error-message">'+esc(history.error)+'</div>':"")+table(["Product / identity","SKU","Level","Latest snapshot","Latest quantity","Unit","Series status"],rows,"No inventory snapshots exist in this organization yet.")+
-      '</section><section class="panel">'+panelHeading("How to interpret this ledger","Identity matching is conservative.")+
-      '<div class="callout"><span class="callout-icon">i</span><div><strong>Unknown means unknown</strong><p>Conflicting same-date balances, mixed units, or ambiguous cross-upload identity are not automatically resolved. A change between snapshots is not proof of sales, shrinkage or expiry loss.</p></div></div></section>':
-      '<div class="workspace-empty"><span class="empty-icon">↗</span><h2>No inventory history yet</h2><p>Upload a dated inventory snapshot to create the first stock-history entry. Invoice quantities do not count as on-hand balances.</p><button class="primary-button" data-view="upload">Import inventory →</button></div>');
+    const historyWarnings = (history?.warnings || []).map(esc);
+    const warningNotice = historyWarnings.length
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">!</span><div><strong>Inventory history warnings</strong><p>'
+        + historyWarnings.join("<br>") + "</p></div></div>"
+      : "";
+    $("#mainContent").innerHTML = pageHeader(
+      "STOCK SNAPSHOTS", "Inventory history",
+      "A conservative ledger across saved stock snapshots. It never reconstructs on-hand balances from invoices alone.",
+      '<button class="secondary-button" data-action="refresh-workspace">↻ Refresh</button>'
+    ) +
+      '<section class="panel">' + panelHeading("Snapshot ledger", "Report date: " + dateLabel(history?.as_of_date || asOf)) +
+      (history
+        ? '<div class="metric-line"><span>Ledger status</span><strong>' + badge(history.status) + '</strong></div>'
+          + '<div class="metric-line"><span>Inventory observations</span><strong>' + esc(nice(history.summary?.input_snapshot_count)) + '</strong></div>'
+          + '<div class="metric-line"><span>Derived product / batch series</span><strong>' + esc(nice(history.summary?.series_returned ?? series.length)) + '</strong></div>'
+          + (history.error ? '<div class="form-message error-message">' + esc(history.error) + '</div>' : "")
+          + warningNotice
+          + table(
+            ["Product", "SKU", "Level", "Batch / expiry", "Latest snapshot", "Age (days)", "Latest quantity", "Unit", "Series status"],
+            rows,
+            "No inventory snapshots exist in this organization yet."
+          )
+          + '</section><section class="panel">' + panelHeading("How to interpret this ledger", "Identity matching is conservative.")
+          + '<div class="callout"><span class="callout-icon">i</span><div><strong>Unknown means unknown</strong><p>Conflicting same-date balances, mixed units, or ambiguous cross-upload identity are not automatically resolved. A change between snapshots is not proof of sales, shrinkage or expiry loss.</p></div></div></section>'
+        : '<div class="workspace-empty"><span class="empty-icon">↗</span><h2>No inventory history yet</h2><p>Upload a dated inventory snapshot to create the first stock-history entry. Invoice quantities do not count as on-hand balances.</p><button class="primary-button" data-view="upload">Import inventory →</button></div>');
   }
   function renderReports() {
-    const inv=state.latestInventory?.quality_report?.inventory_analysis||{},forecast=state.latestSales?.quality_report?.forecasting_baseline||{};
-    const expiry=inv.expiry_alerts||[],forecasts=forecast.forecasts||[],overstock=state.overstock||{},findings=overstock.findings||[];
-    const selected=state.selectedRun;
-    const selectedPanel=selected?'<section class="panel">'+panelHeading("Selected run",selected.source_file_name||selected.document_type||"Preview",'<button class="text-link" data-action="clear-selected">Clear selection</button>')+
-      '<div class="metric-line"><span>Document type</span><strong>'+esc(selected.document_type||"Preview only")+'</strong></div><div class="metric-line"><span>Normalization status</span><strong>'+badge(selected.normalization_status||"completed")+'</strong></div>'+
-      '<div class="metric-line"><span>Products</span><strong>'+esc(nice(selected.summary?.product_count))+'</strong></div><div class="metric-line"><span>Transactions / snapshots</span><strong>'+esc(nice(selected.summary?.transaction_count))+' / '+esc(nice(selected.summary?.inventory_snapshot_count))+'</strong></div>'+
-      (selected.quality_report?.analysis_readiness?'<div class="section-divider"></div>'+Object.entries(selected.quality_report.analysis_readiness).map(([key,value])=>'<div class="metric-line"><span>'+esc(key.replace(/_/g," "))+'</span><strong>'+badge(value.status||value)+'</strong></div>').join(""):"")+'</section>':"";
-    const runRows=state.runs.slice(0,20).map(run=>'<tr><td>'+esc(run.source_file_name)+'</td><td>'+esc(run.document_type.replace(/_/g," "))+'</td><td>'+esc(nice(run.input_row_count))+'</td><td>'+esc(nice(run.summary?.product_count||0))+'</td><td>'+esc(dateLabel(run.created_at))+'</td><td class="run-id">'+esc(run.normalization_run_id.slice(0,8))+'…</td><td><button class="text-link" data-action="view-run" data-run-id="'+esc(run.normalization_run_id)+'">View</button></td></tr>').join("");
-    $("#mainContent").innerHTML=pageHeader("ANALYSIS WORKSPACE","Insights & reports","Expiry alerts, simple demand baselines and stock-target comparisons from saved organization runs.",'<button class="primary-button" data-view="upload">＋ Import data</button>')+
-      '<div class="kpi-grid">'+kpi("Expiry alerts",inv.status?(inv.summary?.expiry_alert_count??expiry.length):"—",inv.as_of_date?"Report date "+dateLabel(inv.as_of_date):"Needs inventory snapshots")+
-      kpi("Demand baselines",forecasts.length,forecast.status?forecast.status.replace(/_/g," "):"Needs complete retail-sales history")+
-      kpi("Above target",overstock.summary?.above_target_count??"—",overstock.status?"Target "+state.targetDays+" days of supply":"Needs saved stock and sales")+
-      kpi("Recent saved runs",state.runs.length,"Up to 50 runs for this organization")+'</div>'+selectedPanel+
-      '<section class="panel">'+panelHeading("Expiry review","Positive on-hand batch positions with normalized expiry evidence.")+
-      '<div class="metric-line"><span>Analysis status</span><strong>'+badge(inv.status||"insufficient_data")+'</strong></div><div class="metric-line"><span>Report date</span><strong>'+esc(dateLabel(inv.as_of_date))+'</strong></div>'+
-      table(["Alert","Product","SKU","Batch","Expiry","Days left","On hand"],expiry.map(row=>[row.alert_type,row.product_name,row.source_product_code,row.batch_code,dateLabel(row.expiry_date),row.days_to_expiry,nice(row.quantity_on_hand)+" "+(row.quantity_unit||"")]),"No expiry alerts returned. Upload a dated inventory snapshot with valid batch expiry data.")+'</section>'+
-      '<section class="panel">'+panelHeading("Demand baseline","The next-seven-day values are baseline outputs, not production-validated predictions.")+
-      '<div class="metric-line"><span>Evaluation status</span><strong>'+badge(forecast.status||"insufficient_data")+'</strong></div><div class="metric-line"><span>History window</span><strong>'+esc(dateLabel(forecast.coverage?.start_date))+' – '+esc(dateLabel(forecast.coverage?.end_date))+'</strong></div>'+
-      table(["Product","Selected baseline","Unit","7-day total","Rolling MAE","Rolling RMSE","Rolling WAPE %","Holdout MAE"],forecasts.map(item=>[item.product_name||item.product_id,item.selected_baseline,item.quantity_unit,item.predicted_total_quantity,item.rolling_origin_mae,item.rolling_origin_rmse,item.rolling_origin_wape_percent,item.final_holdout_mae]),"No forecasts available. Confirm continuous retail sales history of at least 49 days.")+
-      (forecast.blockers?.length?'<div class="form-message error-message">'+forecast.blockers.map(esc).join("<br>")+"</div>":"")+
-      (forecast.warnings?.length?'<p class="small-copy">'+forecast.warnings.map(esc).join("<br>")+"</p>":"")+'</section>'+
-      '<section class="panel">'+panelHeading("Overstock review","Compares stock with a configurable days-of-supply target.",'<form id="targetDaysForm" class="page-actions"><label class="field-label" for="targetDaysInput">Target days</label><input id="targetDaysInput" class="control-input" style="width:76px" type="number" min="1" max="365" value="'+esc(state.targetDays)+'"><button class="secondary-button" type="submit">Recalculate</button></form>')+
-      '<div class="metric-line"><span>Analysis status</span><strong>'+badge(overstock.status||"insufficient_data")+'</strong></div><div class="metric-line"><span>Above / within / insufficient</span><strong>'+esc(nice(overstock.summary?.above_target_count??"—"))+' / '+esc(nice(overstock.summary?.within_target_count??"—"))+' / '+esc(nice(overstock.summary?.insufficient_data_count??"—"))+'</strong></div>'+
-      (overstock.error?'<div class="form-message error-message">'+esc(overstock.error)+"</div>":"")+
-      table(["Status","SKU","Product","On hand","Unit","Target stock","Est. excess","Days of supply"],findings.map(row=>[row.status,row.source_product_code,row.product_name,row.inventory_quantity,row.quantity_unit,row.target_stock_quantity,row.estimated_excess_quantity,row.days_of_supply]),"Requires a saved retail-sales run with confirmed complete history and a compatible recent inventory snapshot.")+
-      '<p class="small-copy">This rule excludes supplier lead times, incoming purchase orders, expiry allocation, seasonality and purchase-cost estimates. Target is a user-supplied policy assumption.</p></section>'+
-      '<section class="panel">'+panelHeading("Saved normalization runs","Select a run to inspect its status and quality/readiness summary.")+
-      (state.runs.length?'<div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Type</th><th>Rows</th><th>Products</th><th>Saved</th><th>Run</th><th></th></tr></thead><tbody>'+runRows+'</tbody></table></div>':
-      '<div class="empty-state"><span class="empty-icon">▤</span><h3>No saved runs</h3><p>Completed normalization runs appear here. Choose preview-only when you do not want to save data.</p></div>')+'</section>';
-    $("#targetDaysForm").addEventListener("submit",async event=>{
-      event.preventDefault();const value=Number($("#targetDaysInput").value);
-      if(!Number.isFinite(value)||value<1||value>365){notify("Target days must be between 1 and 365.",true);return;}
-      state.targetDays=value;await refreshOverstock();renderReports();notify("Overstock review recalculated.");
+    const inv = state.latestInventory?.quality_report?.inventory_analysis || {};
+    const forecast = state.latestSales?.quality_report?.forecasting_baseline || {};
+    const expiry = inv.expiry_alerts || [];
+    const forecasts = forecast.forecasts || [];
+    const overstock = state.overstock || {};
+    const findings = overstock.findings || [];
+    const selected = state.selectedRun;
+
+    const asOfSources = [
+      ["Expiry review", inv.as_of_date],
+      ["Inventory history", state.inventoryHistory?.as_of_date],
+      ["Overstock review", overstock.as_of_date]
+    ].filter(([, value]) => Boolean(value));
+    const uniqueAsOfDates = [...new Set(asOfSources.map(([, value]) => value))];
+    const dateMismatchNotice = uniqueAsOfDates.length > 1
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">!</span><div><strong>Analysis dates do not match</strong><p>'
+        + asOfSources.map(([label, value]) => esc(label + ": " + dateLabel(value))).join(" · ")
+        + '. These results do not describe one consistent inventory state. Confirm the selected organization and use a consistent saved inventory snapshot before relying on cross-module comparisons.</p></div></div>'
+      : "";
+
+    const inventorySource = state.latestInventoryRun;
+    const salesSource = state.latestSalesRun;
+    const inventorySourceLabel = inventorySource
+      ? (inventorySource.source_file_name || inventorySource.document_type) + " · snapshot "
+        + dateLabel(inventorySource.options_summary?.snapshot_date || inv.as_of_date)
+      : "No saved inventory snapshot selected";
+    const salesOptions = salesSource?.options_summary || {};
+    const salesSourceLabel = salesSource
+      ? (salesSource.source_file_name || salesSource.document_type) + " · "
+        + dateLabel(salesOptions.sales_history_start_date) + " – " + dateLabel(salesOptions.sales_history_end_date)
+      : "No saved retail-sales history selected";
+    const analysisSourcesPanel =
+      '<section class="panel">' + panelHeading(
+        "Analysis data sources",
+        "The selected run shown below is for inspection; these are the saved runs that actually feed the dashboard analyses."
+      ) +
+      '<div class="metric-line"><span>Inventory / expiry input</span><strong>' + esc(inventorySourceLabel) + '</strong></div>' +
+      '<div class="metric-line"><span>Demand / overstock input</span><strong>' + esc(salesSourceLabel) + '</strong></div></section>';
+
+    const inventoryFindings = (inv.findings || []).filter(item => item.severity === "error" || item.severity === "warning");
+    const inventoryFindingsNotice = inventoryFindings.length
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">!</span><div><strong>Inventory data checks</strong><p>'
+        + inventoryFindings.slice(0, 8).map(item =>
+          esc(item.severity.toUpperCase() + ": " + item.message + " (affected: " + item.affected_count + ")")
+        ).join("<br>")
+        + (inventoryFindings.length > 8 ? "<br>Additional findings are omitted from this preview." : "")
+        + "</p></div></div>"
+      : "";
+
+    const highWapeProducts = forecasts.filter(item =>
+      typeof item.rolling_origin_wape_percent === "number" && item.rolling_origin_wape_percent > 100
+    );
+    const highWapeNotice = highWapeProducts.length
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">i</span><div><strong>Review high percentage errors</strong><p>'
+        + esc(highWapeProducts.map(item => item.product_name || item.product_id).join(", "))
+        + ' have rolling WAPE above 100%. WAPE can exceed 100% when forecast error is larger than total observed sales, especially for low-volume or intermittent products. Review the series before interpreting this metric.</p></div></div>'
+      : "";
+
+    const overstockWarnings = (overstock.warnings || []).map(esc);
+    const overstockWarningNotice = overstockWarnings.length
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">i</span><div><strong>Overstock interpretation limits</strong><p>'
+        + overstockWarnings.join("<br>") + "</p></div></div>"
+      : "";
+
+    const selectedPanel = selected
+      ? '<section class="panel">' + panelHeading(
+          "Selected run", selected.source_file_name || selected.document_type || "Preview",
+          '<button class="text-link" data-action="clear-selected">Clear selection</button>'
+        ) +
+        '<div class="metric-line"><span>Document type</span><strong>' + esc(selected.document_type || "Preview only") + '</strong></div>' +
+        '<div class="metric-line"><span>Normalization status</span><strong>' + badge(selected.normalization_status || "completed") + '</strong></div>' +
+        '<div class="metric-line"><span>Products</span><strong>' + esc(nice(selected.summary?.product_count)) + '</strong></div>' +
+        '<div class="metric-line"><span>Transactions / snapshots</span><strong>' + esc(nice(selected.summary?.transaction_count)) + ' / ' + esc(nice(selected.summary?.inventory_snapshot_count)) + '</strong></div>' +
+        (selected.quality_report?.analysis_readiness
+          ? '<div class="section-divider"></div>' + Object.entries(selected.quality_report.analysis_readiness).map(([key, value]) =>
+            '<div class="metric-line"><span>' + esc(key.replace(/_/g, " ")) + '</span><strong>' + badge(value.status || value) + '</strong></div>'
+          ).join("")
+          : "") + '</section>'
+      : "";
+
+    const runRows = state.runs.slice(0, 20).map(run =>
+      '<tr><td>' + esc(run.source_file_name) + '</td><td>' + esc(run.document_type.replace(/_/g, " ")) + '</td><td>' +
+      esc(nice(run.input_row_count)) + '</td><td>' + esc(nice(run.summary?.product_count || 0)) + '</td><td>' +
+      esc(dateLabel(run.created_at)) + '</td><td class="run-id">' + esc(run.normalization_run_id.slice(0, 8)) +
+      '…</td><td><button class="text-link" data-action="view-run" data-run-id="' + esc(run.normalization_run_id) + '">View</button></td></tr>'
+    ).join("");
+
+    $("#mainContent").innerHTML = pageHeader(
+      "ANALYSIS WORKSPACE", "Insights & reports",
+      "Expiry alerts, simple demand baselines and stock-target comparisons from saved organization runs.",
+      '<button class="primary-button" data-view="upload">＋ Import data</button>'
+    ) +
+      '<div class="kpi-grid">' +
+      kpi("Expiry alerts", inv.status ? (inv.summary?.expiry_alert_count ?? expiry.length) : "—",
+        inv.as_of_date ? "Report date " + dateLabel(inv.as_of_date) : "Needs inventory snapshots") +
+      kpi("Demand baselines", forecasts.length, forecast.status ? forecast.status.replace(/_/g, " ") : "Needs complete retail-sales history") +
+      kpi("Above target", overstock.summary?.above_target_count ?? "—",
+        overstock.status ? "Target " + state.targetDays + " days of supply" : "Needs saved stock and sales") +
+      kpi("Recent saved runs", state.runs.length, "Up to 50 runs for this organization") +
+      '</div>' + selectedPanel + analysisSourcesPanel + dateMismatchNotice +
+
+      '<section class="panel">' + panelHeading("Expiry review", "Positive on-hand batch positions with normalized expiry evidence.") +
+      '<div class="metric-line"><span>Analysis status</span><strong>' + badge(inv.status || "insufficient_data") + '</strong></div>' +
+      '<div class="metric-line"><span>Report date</span><strong>' + esc(dateLabel(inv.as_of_date)) + '</strong></div>' +
+      table(
+        ["Alert", "Product", "SKU", "Batch", "Expiry", "Days left", "On hand", "Snapshot / age", "Confidence / caveat"],
+        expiry.map(row => [
+          row.alert_type, row.product_name, row.source_product_code, row.batch_code, dateLabel(row.expiry_date),
+          row.days_to_expiry, nice(row.quantity_on_hand) + " " + (row.quantity_unit || ""),
+          dateLabel(row.snapshot_date) + " / " + nice(row.snapshot_age_days) + " days old",
+          [row.confidence, ...(row.provisional_reasons || [])].filter(Boolean).join(" · ") || "—"
+        ]),
+        "No expiry alerts returned. Upload a dated inventory snapshot with valid batch expiry data."
+      ) + inventoryFindingsNotice + '</section>' +
+
+      '<section class="panel">' + panelHeading("Demand baseline", "The next-seven-day values are baseline outputs, not production-validated predictions.") +
+      '<div class="metric-line"><span>Evaluation status</span><strong>' + badge(forecast.status || "insufficient_data") + '</strong></div>' +
+      '<div class="metric-line"><span>History window</span><strong>' + esc(dateLabel(forecast.coverage?.start_date)) + ' – ' + esc(dateLabel(forecast.coverage?.end_date)) + '</strong></div>' +
+      table(
+        ["Product", "Selected baseline", "Unit", "7-day total", "Next 7 daily values", "Rolling MAE", "Rolling RMSE", "Rolling WAPE %", "Holdout MAE"],
+        forecasts.map(item => [
+          item.product_name || item.product_id, item.selected_baseline, item.quantity_unit, item.predicted_total_quantity,
+          (item.daily_forecast || []).map(day => dateLabel(day.date) + ": " + nice(day.predicted_quantity)).join(" · ") || "—",
+          item.rolling_origin_mae, item.rolling_origin_rmse, item.rolling_origin_wape_percent, item.final_holdout_mae
+        ]),
+        "No forecasts available. Confirm continuous retail sales history of at least 49 days."
+      ) + highWapeNotice +
+      (forecast.blockers?.length ? '<div class="form-message error-message">' + forecast.blockers.map(esc).join("<br>") + "</div>" : "") +
+      (forecast.warnings?.length ? '<p class="small-copy">' + forecast.warnings.map(esc).join("<br>") + "</p>" : "") +
+      '</section>' +
+
+      '<section class="panel">' + panelHeading(
+        "Overstock review", "Compares stock with a configurable days-of-supply target.",
+        '<form id="targetDaysForm" class="page-actions"><label class="field-label" for="targetDaysInput">Target days</label><input id="targetDaysInput" class="control-input" style="width:76px" type="number" min="1" max="365" value="' + esc(state.targetDays) + '"><button class="secondary-button" type="submit">Recalculate</button></form>'
+      ) +
+      '<div class="metric-line"><span>Analysis status</span><strong>' + badge(overstock.status || "insufficient_data") + '</strong></div>' +
+      '<div class="metric-line"><span>Above / within / insufficient data / no demand signal</span><strong>' +
+      esc(nice(overstock.summary?.above_target_count ?? "—")) + ' / ' +
+      esc(nice(overstock.summary?.within_target_count ?? "—")) + ' / ' +
+      esc(nice(overstock.summary?.insufficient_data_count ?? "—")) + ' / ' +
+      esc(nice(overstock.summary?.insufficient_demand_signal_count ?? "—")) + '</strong></div>' +
+      (overstock.error ? '<div class="form-message error-message">' + esc(overstock.error) + "</div>" : "") +
+      table(
+        ["Status", "SKU", "Product", "On hand", "Unit", "Avg. daily sales (observed)", "Target stock", "Est. excess", "Days of supply", "Stock snapshot / age", "Review flags"],
+        findings.map(row => [
+          row.status, row.source_product_code, row.product_name, row.inventory_quantity, row.quantity_unit,
+          row.average_daily_demand, row.target_stock_quantity, row.estimated_excess_quantity, row.days_of_supply,
+          row.inventory_snapshot_date
+            ? dateLabel(row.inventory_snapshot_date) + " / " + nice(row.inventory_snapshot_age_days) + " days old"
+            : "—",
+          (row.review_flags || []).join(" · ") || "—"
+        ]),
+        "Requires a saved retail-sales run with confirmed complete history and a compatible recent inventory snapshot."
+      ) + overstockWarningNotice +
+      '<p class="small-copy">This rule excludes supplier lead times, incoming purchase orders, expiry allocation, seasonality and purchase-cost estimates. Target is a user-supplied policy assumption. Decimal target/excess values come from average sales; they are estimates, not executable pack quantities or purchase instructions.</p>' +
+      '</section>' +
+
+      '<section class="panel">' + panelHeading("Saved normalization runs", "Select a run to inspect its status and quality/readiness summary.") +
+      (state.runs.length
+        ? '<div class="table-wrap"><table class="data-table"><thead><tr><th>File</th><th>Type</th><th>Rows</th><th>Products</th><th>Saved</th><th>Run</th><th></th></tr></thead><tbody>' + runRows + '</tbody></table></div>'
+        : '<div class="empty-state"><span class="empty-icon">▤</span><h3>No saved runs</h3><p>Completed normalization runs appear here. Choose preview-only when you do not want to save data.</p></div>'
+      ) + '</section>';
+
+    $("#targetDaysForm").addEventListener("submit", async event => {
+      event.preventDefault();
+      const value = Number($("#targetDaysInput").value);
+      if (!Number.isFinite(value) || value < 1 || value > 365) {
+        notify("Target days must be between 1 and 365.", true);
+        return;
+      }
+      state.targetDays = value;
+      await refreshOverstock();
+      renderReports();
+      notify("Overstock review recalculated.");
     });
   }
   async function handleViewRun(runId) {
