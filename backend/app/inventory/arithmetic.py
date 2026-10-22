@@ -381,6 +381,9 @@ def calculate_inventory_arithmetic(
             "severity": ALERT_SEVERITY[alert_type],
             "product_id": position["product_id"],
             "product_name": position["product_name"],
+            "source_product_code": _text(
+                products_by_id.get(position["product_id"], {}).get("source_product_code")
+            ) or None,
             "batch_record_id": batch_id,
             "batch_code": _text(batch.get("batch_code")) or None,
             "expiry_date": expiry.isoformat(),
