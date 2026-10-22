@@ -169,24 +169,18 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     inventory_products = {
         row["product_id"]: row for row in inventory_run["previews"]["products"]
     }
-    inventory_batches = {
-        row["batch_record_id"]: row for row in inventory_run["previews"]["batches"]
-    }
-    inventory_snapshots = inventory_run["previews"]["inventory_snapshots"]
-    assert inventory_run["summary"]["inventory_snapshot_count"] == len(inventory_snapshots)
-    assert all(date.fromisoformat(row["snapshot_date"]) <= as_of for row in inventory_snapshots)
-    snapshot_by_code_batch = {
-        (
-            inventory_products[row["product_id"]]["source_product_code"],
-            inventory_batches[row["batch_record_id"]]["batch_code"],
-        ): row
-        for row in inventory_snapshots
+    inventory_positions = inventory_analysis["current_positions_preview"]
+    assert not inventory_analysis["current_positions_truncated"]
+    assert inventory_analysis["summary"]["current_position_count"] == len(inventory_positions)
+    assert all(date.fromisoformat(row["snapshot_date"]) <= as_of for row in inventory_positions)
+    position_by_product_batch = {
+        (row["product_id"], row["batch_code"]): row for row in inventory_positions
     }
     for alert in inventory_analysis["expiry_alerts"]:
         assert alert["source_product_code"] == inventory_products[alert["product_id"]]["source_product_code"]
-        snapshot = snapshot_by_code_batch[(alert["source_product_code"], alert["batch_code"])]
-        assert alert["quantity_on_hand"] == snapshot["quantity_on_hand"]
-        assert alert["quantity_unit"] == snapshot["quantity_unit"]
+        position = position_by_product_batch[(alert["product_id"], alert["batch_code"])]
+        assert alert["quantity_on_hand"] == position["quantity_on_hand"]
+        assert alert["quantity_unit"] == position["quantity_unit"]
 
     saved_run = client.get(
         f"/api/v1/normalization-runs/{inventory_run['normalization_run_id']}",
