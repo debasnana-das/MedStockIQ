@@ -197,7 +197,7 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     history_payload = history.json()
     assert history_payload["as_of_date"] == as_of.isoformat()
     assert history_payload["series"]
-    assert history_payload["summary"]["input_snapshot_count"] == len(inventory_snapshots)
+    assert history_payload["summary"]["input_snapshot_count"] == inventory_run["summary"]["inventory_snapshot_count"]
     assert {
         point["snapshot_date"]
         for item in history_payload["series"]
@@ -234,10 +234,10 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     )
 
     stock_quantity_by_code_unit = {}
-    for snapshot in inventory_snapshots:
-        code = inventory_products[snapshot["product_id"]]["source_product_code"]
-        key = (code, snapshot["quantity_unit"].casefold())
-        stock_quantity_by_code_unit[key] = stock_quantity_by_code_unit.get(key, 0) + snapshot["quantity_on_hand"]
+    for position in inventory_positions:
+        code = inventory_products[position["product_id"]]["source_product_code"]
+        key = (code, position["quantity_unit"].casefold())
+        stock_quantity_by_code_unit[key] = stock_quantity_by_code_unit.get(key, 0) + position["quantity_on_hand"]
     findings_by_code = {
         item["source_product_code"]: item
         for item in report["findings"]
