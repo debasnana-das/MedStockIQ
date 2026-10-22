@@ -459,6 +459,14 @@
     }
     const history = state.inventoryHistory;
     const series = history?.series || [];
+    const distinctSnapshotDates = new Set(
+      series.flatMap(item => (item.history || []).map(point => point.snapshot_date)).filter(Boolean)
+    );
+    const historySummary = history?.summary || {};
+    const unknownLatestCount = Number(historySummary.latest_quantity_unknown_series_count || 0);
+    const oneSnapshotNotice = distinctSnapshotDates.size === 1
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">i</span><div><strong>Single snapshot only</strong><p>Only one distinct snapshot date is available. This is a current-position listing, not a historical trend; inventory movement between dates cannot be assessed from this upload alone.</p></div></div>'
+      : "";
     const rows = series.slice(0, 100).map(item => {
       const latest = item.latest_observation || {};
       const product = item.product || {};
@@ -495,8 +503,10 @@
         ? '<div class="metric-line"><span>Ledger status</span><strong>' + badge(history.status) + '</strong></div>'
           + '<div class="metric-line"><span>Inventory observations</span><strong>' + esc(nice(history.summary?.input_snapshot_count)) + '</strong></div>'
           + '<div class="metric-line"><span>Derived product / batch series</span><strong>' + esc(nice(history.summary?.series_returned ?? series.length)) + '</strong></div>'
+          + '<div class="metric-line"><span>Distinct snapshot dates</span><strong>' + esc(nice(distinctSnapshotDates.size)) + '</strong></div>'
+          + '<div class="metric-line"><span>Latest quantities unresolved</span><strong>' + esc(nice(unknownLatestCount)) + '</strong></div>'
           + (history.error ? '<div class="form-message error-message">' + esc(history.error) + '</div>' : "")
-          + warningNotice
+          + oneSnapshotNotice + warningNotice
           + table(
             ["Product", "SKU", "Level", "Batch / expiry", "Latest snapshot", "Age (days)", "Latest quantity", "Unit", "Series status"],
             rows,
