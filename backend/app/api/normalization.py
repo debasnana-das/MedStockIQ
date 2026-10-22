@@ -11,10 +11,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import ValidationError
+from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.db.models import Organization, OrganizationMembership
+from app.db.models import NormalizationRun, Organization, OrganizationMembership
 from app.db.persistence import (
     get_persisted_inventory_history_observations,
     get_persisted_normalization_preview,
@@ -141,6 +142,9 @@ async def normalize_uploaded_file(
     result["quality_report"]["inventory_analysis"] = calculate_inventory_arithmetic(
         result,
         currency_code=options.currency_code,
+        as_of_date=(
+            options.snapshot_date if options.document_type == "inventory_report" else None
+        ),
     )
     result["quality_report"]["forecasting_baseline"] = evaluate_demand_baselines(
         result,
@@ -336,3 +340,47 @@ def get_overstock_review(
         sales_history_end_date=sales_options.get("sales_history_end_date"),
         target_days_of_supply=target_days_of_supply,
     )
+
+
+@router.get("/normalization-runs")
+def list_normalization_runs(
+    organization_id: str = Query(..., min_length=1, max_length=100),
+    limit: int = Query(default=25, ge=1, le=100),
+    principal: AuthenticatedUser = Depends(get_current_principal),
+    session: Session = Depends(get_db_session),
+) -> dict[str, Any]:
+    """List bounded run summaries for an organization after membership validation."""
+    _require_organization_access(session, principal, organization_id)
+    try:
+        rows = session.scalars(
+            select(NormalizationRun)
+            .where(NormalizationRun.organization_id == organization_id)
+            .order_by(NormalizationRun.created_at.desc(), NormalizationRun.run_id.desc())
+            .limit(limit)
+        ).all()
+    except SQLAlchemyError as exc:
+        logger.exception("Could not list normalization runs")
+        raise HTTPException(status_code=503, detail="Normalization run query failed.") from exc
+
+    runs = []
+    for run in rows:
+        options = run.options_json or {}
+        runs.append({
+            "normalization_run_id": run.run_id,
+            "organization_id": run.organization_id,
+            "source_file_name": run.source_file_name,
+            "source_format": run.source_format,
+            "source_file_bytes": run.source_file_bytes,
+            "document_type": run.document_type,
+            "normalization_status": run.normalization_status,
+            "input_row_count": run.input_row_count,
+            "summary": run.summary_json,
+            "created_at": run.created_at.isoformat() if run.created_at else None,
+            "options_summary": {
+                "snapshot_date": options.get("snapshot_date"),
+                "sales_history_complete": options.get("sales_history_complete", False),
+                "sales_history_start_date": options.get("sales_history_start_date"),
+                "sales_history_end_date": options.get("sales_history_end_date"),
+            },
+        })
+    return {"runs": runs, "count": len(runs)}

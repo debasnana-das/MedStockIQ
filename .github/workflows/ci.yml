@@ -41,6 +41,8 @@ jobs:
         run: DATABASE_URL=sqlite:///./migration_test.db alembic upgrade head
       - name: Verify database migration against PostgreSQL
         run: alembic upgrade head
+      - name: Check dashboard JavaScript syntax
+        run: node --check frontend/app.js && node --check frontend/meta_controls.js
       - name: Lint
         run: ruff check .
       - name: Test

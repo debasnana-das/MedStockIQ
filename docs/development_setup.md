@@ -27,7 +27,7 @@ alembic upgrade head
 uvicorn app.main:app --reload --app-dir backend
 ```
 
-Open `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/health/database`, and `http://127.0.0.1:8000/docs`.
+Open the local workspace at `http://127.0.0.1:8000/`. Also check `http://127.0.0.1:8000/health`, `http://127.0.0.1:8000/health/database`, and `http://127.0.0.1:8000/docs`. The workspace is served by FastAPI on the same origin; no separate frontend build or CORS configuration is needed.
 
 ## Register, create an organization, and upload a file
 

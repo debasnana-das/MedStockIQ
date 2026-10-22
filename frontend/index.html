@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#102c36">
+  <meta name="description" content="MedStockIQ pharmacy and stockist inventory intelligence workspace">
+  <title>MedStockIQ · Inventory intelligence</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script src="/app.js" defer></script>
+  <script src="/meta_controls.js" defer></script>
+</head>
+<body>
+  <section class="auth-screen" id="authScreen">
+    <div class="auth-story">
+      <div class="brand brand-large"><span class="brand-mark">M</span><span class="brand-copy"><strong>MedStockIQ</strong><small>INVENTORY INTELLIGENCE</small></span></div>
+      <div class="story-copy">
+        <span class="eyebrow">A clearer view of every batch</span>
+        <h1>Turn pharmacy data into <em>better visibility.</em></h1>
+        <p>Bring invoices, stock snapshots and retail sales into one workspace. Review data quality first, then explore expiry, demand and stock-position signals.</p>
+        <div class="story-points">
+          <div><span class="point-icon">01</span><span><strong>Confirm the data</strong><small>Review column mappings before normalization.</small></span></div>
+          <div><span class="point-icon">02</span><span><strong>See the evidence</strong><small>Keep stock facts separate from assumptions.</small></span></div>
+          <div><span class="point-icon">03</span><span><strong>Know the limits</strong><small>Missing or ambiguous information stays visible.</small></span></div>
+        </div>
+      </div>
+      <p class="auth-footnote">Local development workspace · Use fictional or properly authorized data.</p>
+    </div>
+    <div class="auth-side">
+      <div class="mobile-brand brand"><span class="brand-mark">M</span><span class="brand-copy"><strong>MedStockIQ</strong><small>INVENTORY INTELLIGENCE</small></span></div>
+      <div class="auth-card">
+        <div class="auth-heading"><span class="eyebrow">YOUR WORKSPACE</span><h2 id="authTitle">Welcome back</h2><p id="authSubtitle">Sign in to review your organization's inventory signals.</p></div>
+        <div class="auth-tabs" role="tablist" aria-label="Authentication">
+          <button type="button" class="auth-tab active" data-auth-mode="login" role="tab" aria-selected="true">Sign in</button>
+          <button type="button" class="auth-tab" data-auth-mode="register" role="tab" aria-selected="false">Create account</button>
+        </div>
+        <div id="authFormMount"></div>
+        <p id="authError" class="form-message error-message" role="alert" hidden></p>
+        <p class="auth-security"><span>▣</span> Your token stays in this browser tab and is not saved to local storage.</p>
+      </div>
+      <p class="auth-local-note">Prototype environment · Not for public or production use</p>
+    </div>
+  </section>
+  <div class="workspace-shell" id="workspace" hidden>
+    <aside class="sidebar" id="sidebar">
+      <div class="brand"><span class="brand-mark">M</span><span class="brand-copy"><strong>MedStockIQ</strong><small>INVENTORY INTELLIGENCE</small></span></div>
+      <div class="side-caption">WORKSPACE</div>
+      <nav class="side-nav" aria-label="Main navigation">
+        <button type="button" class="nav-item active" data-view="dashboard"><span class="nav-icon">⌂</span>Overview</button>
+        <button type="button" class="nav-item" data-view="upload"><span class="nav-icon">＋</span>Import &amp; analyze</button>
+        <button type="button" class="nav-item" data-view="history"><span class="nav-icon">↗</span>Inventory history</button>
+        <button type="button" class="nav-item" data-view="reports"><span class="nav-icon">▤</span>Insights &amp; reports</button>
+      </nav>
+      <div class="sidebar-spacer"></div>
+      <div class="privacy-card"><span class="privacy-symbol">✓</span><strong>Evidence before estimates</strong><p>Unknown units, stock basis and incomplete history should stay unknown until confirmed.</p></div>
+      <div class="sidebar-footer"><span class="live-dot"></span> Local workspace <span class="version-tag">MVP</span></div>
+    </aside>
+    <section class="workspace-main">
+      <header class="topbar">
+        <div class="topbar-left"><button type="button" class="mobile-menu" id="mobileMenu" aria-label="Toggle navigation">☰</button><div class="breadcrumb"><span>Workspace</span><span class="breadcrumb-slash">/</span><strong id="pageTitle">Overview</strong></div></div>
+        <div class="topbar-actions">
+          <span class="api-status" id="apiStatus"><span class="status-dot"></span><span>Checking API</span></span>
+          <label class="org-select-label" for="orgSelect">Organization</label>
+          <select id="orgSelect" class="org-select" aria-label="Select organization" disabled><option>Loading…</option></select>
+          <div class="user-menu"><span class="avatar" id="userAvatar">U</span><span id="userEmail">Signed in</span><button type="button" id="logoutButton" class="logout-button">Sign out</button></div>
+        </div>
+      </header>
+      <main class="main-content" id="mainContent"><div class="loading-block"><span class="spinner"></span><p>Opening your workspace…</p></div></main>
+      <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    </section>
+  </div>
+</body>
+</html>

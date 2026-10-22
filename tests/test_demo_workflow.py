@@ -166,3 +166,16 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
         item.get("source_product_code") == "SRC-004" and item["status"] == "above_target"
         for item in report["findings"]
     )
+
+    saved_runs = client.get(
+        "/api/v1/normalization-runs",
+        headers=headers,
+        params={"organization_id": organization_id, "limit": 10},
+    )
+    assert saved_runs.status_code == 200, saved_runs.text
+    listed = saved_runs.json()["runs"]
+    assert len(listed) == 3
+    assert {row["document_type"] for row in listed} == {
+        "purchase_invoice", "inventory_report", "retail_sales"
+    }
+    assert all(row["organization_id"] == organization_id for row in listed)

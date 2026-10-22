@@ -1,8 +1,10 @@
 """FastAPI application entrypoint."""
 
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.auth import router as auth_router
@@ -42,3 +44,9 @@ def database_health_check() -> dict[str, str]:
         logger.exception("Database health check failed")
         raise HTTPException(status_code=503, detail="Database is not reachable.") from exc
     return {"status": "ok", "database": "reachable"}
+
+
+# Serve the same-origin local workspace after API routes to avoid browser CORS setup.
+_FRONTEND_DIR = Path(__file__).resolve().parents[2] / "frontend"
+if _FRONTEND_DIR.is_dir() and (_FRONTEND_DIR / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=str(_FRONTEND_DIR), html=True), name="frontend")

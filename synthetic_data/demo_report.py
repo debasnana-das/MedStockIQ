@@ -144,9 +144,8 @@ def write_demo_report(output_path: Path, data: dict[str, Any]) -> Path:
             "purchase orders, supplier lead times, seasonality, substitutions, or expiry-aware allocation."
         ),
         (
-            "Expiry flags use the demo's stated as-of date "
-            f"{_display(data.get('as_of_date'))}; interpret alert windows relative to that date, "
-            "not today's date."
+            "Expiry flags use the inventory analysis as-of date "
+            f"{_display(inventory.get('as_of_date') or data.get('as_of_date'))}; interpret alert windows relative to that date."
         ),
     ]
 
@@ -216,7 +215,7 @@ footer {{ color: var(--muted); text-align: center; font-size: 12px; padding: 22p
 <div class="kpis">
   <div class="kpi"><strong>{escape(_display(total_source_rows))}</strong><span>Source rows processed</span></div>
   <div class="kpi"><strong>{escape(_display(len(forecasts)))}</strong><span>Product demand baselines</span></div>
-  <div class="kpi"><strong>{escape(_display(len(expiry_alerts)))}</strong><span>Expiry alert(s) as of demo date</span></div>
+  <div class="kpi"><strong>{escape(_display(len(expiry_alerts)))}</strong><span>Expiry alert(s) as of inventory report date</span></div>
   <div class="kpi"><strong>{escape(_display(above_target_count))}</strong><span>Products above target supply</span></div>
 </div>
 
@@ -228,7 +227,7 @@ footer {{ color: var(--muted); text-align: center; font-size: 12px; padding: 22p
 
 <section>
   <h2>Expiry review</h2>
-  <p>Analysis status: {_status(inventory.get("status", "unknown"))} · Alert count: <strong>{escape(_display((inventory.get("summary") or {}).get("expiry_alert_count", len(expiry_alerts))))}</strong></p>
+  <p>Analysis status: {_status(inventory.get("status", "unknown"))} · Report date: <strong>{escape(_display(inventory.get("as_of_date") or data.get("as_of_date")))}</strong> · Alert count: <strong>{escape(_display((inventory.get("summary") or {}).get("expiry_alert_count", len(expiry_alerts))))}</strong></p>
   {_table(["Alert", "Product", "SKU", "Batch", "Expiry date", "On hand", "Unit"], expiry_rows, "No expiry alerts were returned for this synthetic run.")}
 </section>
 

@@ -92,7 +92,7 @@ A purchase invoice alone is not treated as verified sell-through or current inve
 
 ## 8. Inventory arithmetic and batch expiry alerts
 
-The `quality_report.inventory_analysis` object is calculated for preview responses and stored inside the saved quality report. The arithmetic uses a fixed report date of the server's current date unless the Python service is called directly with an explicit `as_of_date`. The expiry alert windows are 30, 90 and 180 days.
+The `quality_report.inventory_analysis` object is calculated for preview responses and stored inside the saved quality report. For an `inventory_report` with a supplied `snapshot_date`, that date anchors the report's as-of date so historical expiry and stock calculations remain tied to the source snapshot. If no snapshot date is supplied, the service uses the server's current date. The expiry alert windows are 30, 90 and 180 days.
 
 - **Current positions:** select the latest valid stock snapshot on or before the report date per product/batch/quantity unit. Future-dated snapshots are excluded; stale snapshots are still shown but clearly flagged. Product-level and batch-level totals are reported separately to help prevent double counting.
 - **Snapshot validation:** negative or incomplete snapshots are excluded. Conflicting same-date balances or mixed units exclude the affected position; identical same-date duplicates are counted once and flagged.
