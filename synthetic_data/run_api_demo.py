@@ -20,6 +20,7 @@ import httpx
 
 from synthetic_data.generate_dataset import DEFAULT_AS_OF
 from synthetic_data.generate_demo_inputs import generate_demo_inputs
+from synthetic_data.demo_report import write_demo_report
 
 
 COLUMN_RULES: dict[str, dict[str, dict[str, Any]]] = {
@@ -185,6 +186,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--output-dir", type=Path, default=Path("data/demo-inputs"))
+    parser.add_argument(
+        "--report-path",
+        type=Path,
+        default=Path("data/demo-report.html"),
+        help="Write a self-contained local HTML summary of the completed demo.",
+    )
     parser.add_argument("--as-of-date", type=date.fromisoformat, default=DEFAULT_AS_OF)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--target-days-of-supply", type=float, default=30)
@@ -377,7 +384,44 @@ def main() -> int:
                         f"estimated excess={finding.get('estimated_excess_quantity')}"
                     )
 
-            print("\nDemo finished. All records are fictional; results test software behavior only.")
+            report_path = write_demo_report(
+                args.report_path,
+                {
+                    "as_of_date": args.as_of_date.isoformat(),
+                    "seed": args.seed,
+                    "organization_id": organization_id,
+                    "target_days_of_supply": args.target_days_of_supply,
+                    "row_counts": json.loads(
+                        outputs["manifest"].read_text(encoding="utf-8")
+                    )["row_counts"],
+                    "runs": [
+                        {
+                            "label": "Purchase invoice",
+                            "source_rows": purchase_profile.get("row_count_profiled"),
+                            "summary": purchase_run.get("summary") or {},
+                            "run_id": purchase_run["normalization_run_id"],
+                        },
+                        {
+                            "label": "Inventory snapshot",
+                            "source_rows": inventory_profile.get("row_count_profiled"),
+                            "summary": inventory_run.get("summary") or {},
+                            "run_id": inventory_run["normalization_run_id"],
+                        },
+                        {
+                            "label": "Retail sales",
+                            "source_rows": sales_profile.get("row_count_profiled"),
+                            "summary": sales_run.get("summary") or {},
+                            "run_id": sales_run["normalization_run_id"],
+                        },
+                    ],
+                    "inventory_analysis": inventory_analysis,
+                    "forecasting": forecast,
+                    "inventory_history": history,
+                    "overstock": overstock,
+                },
+            )
+            print("\\nDemo finished. All records are fictional; results test software behavior only.")
+            print(f"HTML report: {report_path.resolve()}")
             print(f"Saved normalization run IDs: purchase={purchase_run['normalization_run_id']}, "
                   f"inventory={inventory_run['normalization_run_id']}, sales={sales_run['normalization_run_id']}")
             return 0
