@@ -157,7 +157,13 @@
   }
   function table(headers, rows, emptyMessage = "Nothing to show yet.") {
     if (!rows || !rows.length) return '<div class="empty-state compact-empty"><span class="empty-icon">↗</span><h3>Nothing to show yet</h3><p>' + esc(emptyMessage) + "</p></div>";
-    return '<div class="table-wrap"><table class="data-table"><thead><tr>' + headers.map(x => "<th>" + esc(x) + "</th>").join("") + "</tr></thead><tbody>" +
+    const columnCount = headers.length;
+    const widthClass = columnCount >= 10 ? " table-extra-wide" : columnCount >= 8 ? " table-wide" : columnCount >= 6 ? " table-medium" : "";
+    const scrollHint = columnCount >= 8
+      ? '<p class="table-scroll-hint">Scroll horizontally to view all columns.</p>'
+      : "";
+    return scrollHint + '<div class="table-wrap" role="region" tabindex="0" aria-label="Results table. Scroll horizontally to view all columns."><table class="data-table' + widthClass + '"><thead><tr>' +
+      headers.map(x => "<th>" + esc(x) + "</th>").join("") + "</tr></thead><tbody>" +
       rows.map(row => "<tr>" + row.map(cell => "<td>" + esc(nice(cell)) + "</td>").join("") + "</tr>").join("") + "</tbody></table></div>";
   }
   function dateLabel(value) {
@@ -467,6 +473,11 @@
     const oneSnapshotNotice = distinctSnapshotDates.size === 1
       ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">i</span><div><strong>Single snapshot only</strong><p>Only one distinct snapshot date is available. This is a current-position listing, not a historical trend; inventory movement between dates cannot be assessed from this upload alone.</p></div></div>'
       : "";
+    const historyAsOfDate = history?.as_of_date || asOf;
+    const historyAgeToday = dayAge(todayISO(), historyAsOfDate);
+    const historicalSnapshotNotice = Number.isFinite(historyAgeToday) && historyAgeToday > 0
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">i</span><div><strong>Historical snapshot</strong><p>The ledger is as of ' + esc(dateLabel(historyAsOfDate)) + ', ' + esc(nice(historyAgeToday)) + ' calendar days before today (' + esc(dateLabel(todayISO())) + '). The age column is measured relative to the report date, not today.</p></div></div>'
+      : "";
     const rows = series.slice(0, 100).map(item => {
       const latest = item.latest_observation || {};
       const product = item.product || {};
@@ -506,9 +517,9 @@
           + '<div class="metric-line"><span>Distinct snapshot dates</span><strong>' + esc(nice(distinctSnapshotDates.size)) + '</strong></div>'
           + '<div class="metric-line"><span>Latest quantities unresolved</span><strong>' + esc(nice(unknownLatestCount)) + '</strong></div>'
           + (history.error ? '<div class="form-message error-message">' + esc(history.error) + '</div>' : "")
-          + oneSnapshotNotice + warningNotice
+          + oneSnapshotNotice + historicalSnapshotNotice + warningNotice
           + table(
-            ["Product", "SKU", "Level", "Batch / expiry", "Latest snapshot", "Age (days)", "Latest quantity", "Unit", "Series status"],
+            ["Product", "SKU", "Level", "Batch / expiry", "Latest snapshot", "Age at report date (days)", "Latest quantity", "Unit", "Series status"],
             rows,
             "No inventory snapshots exist in this organization yet."
           )
@@ -537,6 +548,11 @@
         + '. These results do not describe one consistent inventory state. Confirm the selected organization and use a consistent saved inventory snapshot before relying on cross-module comparisons.</p></div></div>'
       : "";
 
+    const reportAsOfDate = inv.as_of_date || overstock.as_of_date || state.inventoryHistory?.as_of_date;
+    const reportAgeToday = reportAsOfDate ? dayAge(todayISO(), reportAsOfDate) : "—";
+    const historicalReportNotice = Number.isFinite(reportAgeToday) && reportAgeToday > 0
+      ? '<div class="callout" style="margin-top:12px"><span class="callout-icon">i</span><div><strong>Historical report — not current stock position</strong><p>These analyses are as of ' + esc(dateLabel(reportAsOfDate)) + ', ' + esc(nice(reportAgeToday)) + ' calendar days before today (' + esc(dateLabel(todayISO())) + '). Forecast dates and stock comparisons refer to that past period; refresh inventory and sales data before using them for current decisions.</p></div></div>'
+      : "";
     const inventorySource = state.latestInventoryRun;
     const salesSource = state.latestSalesRun;
     const inventorySnapshotDate = inventorySource?.options_summary?.snapshot_date
@@ -597,6 +613,9 @@
           ? '<div class="section-divider"></div>' + Object.entries(selected.quality_report.analysis_readiness).map(([key, value]) =>
             '<div class="metric-line"><span>' + esc(key.replace(/_/g, " ")) + '</span><strong>' + badge(value.status || value) + '</strong></div>'
           ).join("")
+          : "") +
+        (inventorySource && salesSource
+          ? '<div class="callout readiness-note"><span class="callout-icon">i</span><div><strong>Run-specific readiness</strong><p>The readiness labels above apply only to this upload. The expiry, demand and overstock panels below combine the saved inventory snapshot and retail-sales history listed under Analysis data sources.</p></div></div>'
           : "") + '</section>'
       : "";
 
@@ -619,15 +638,15 @@
       kpi("Above target", overstock.summary?.above_target_count ?? "—",
         overstock.status ? "Target " + state.targetDays + " days of supply" : "Needs saved stock and sales") +
       kpi("Recent saved runs", state.runs.length, "Up to 50 runs for this organization") +
-      '</div>' + selectedPanel + analysisSourcesPanel + dateMismatchNotice +
+      '</div>' + selectedPanel + analysisSourcesPanel + dateMismatchNotice + historicalReportNotice +
 
       '<section class="panel">' + panelHeading("Expiry review", "Positive on-hand batch positions with normalized expiry evidence.") +
       '<div class="metric-line"><span>Analysis status</span><strong>' + badge(inv.status || "insufficient_data") + '</strong></div>' +
       '<div class="metric-line"><span>Report date</span><strong>' + esc(dateLabel(inv.as_of_date)) + '</strong></div>' +
       table(
-        ["Alert", "Product", "SKU", "Batch", "Expiry", "Days left", "On hand", "Snapshot / age", "Confidence / caveat"],
+        ["Alert", "Product", "SKU", "Batch", "Expiry", "Days left", "On hand", "Snapshot / age at report date", "Confidence / caveat"],
         expiry.map(row => [
-          row.alert_type, row.product_name, row.source_product_code, row.batch_code, dateLabel(row.expiry_date),
+          row.alert_type ? row.alert_type.replace(/_/g, " ") : "—", row.product_name, row.source_product_code, row.batch_code, dateLabel(row.expiry_date),
           row.days_to_expiry, nice(row.quantity_on_hand) + " " + (row.quantity_unit || ""),
           dateLabel(row.snapshot_date) + " / " + nice(row.snapshot_age_days) + " days old",
           [row.confidence, ...(row.provisional_reasons || [])].filter(Boolean).join(" · ") || "—"
@@ -635,14 +654,14 @@
         "No expiry alerts returned. Upload a dated inventory snapshot with valid batch expiry data."
       ) + inventoryFindingsNotice + '</section>' +
 
-      '<section class="panel">' + panelHeading("Demand baseline", "The next-seven-day values are baseline outputs, not production-validated predictions.") +
+      '<section class="panel">' + panelHeading("Demand baseline", "The seven-day forecast starts after the saved sales-history end date; outputs are not production-validated predictions.") +
       '<div class="metric-line"><span>Evaluation status</span><strong>' + badge(forecast.status || "insufficient_data") + '</strong></div>' +
       '<div class="metric-line"><span>History window</span><strong>' + esc(dateLabel(forecast.coverage?.start_date)) + ' – ' + esc(dateLabel(forecast.coverage?.end_date)) + '</strong></div>' +
       table(
         ["Product", "Selected baseline", "Unit", "7-day total", "Next 7 daily values", "Rolling MAE", "Rolling RMSE", "Rolling WAPE %", "Holdout MAE"],
         forecasts.map(item => [
-          item.product_name || item.product_id, item.selected_baseline, item.quantity_unit, item.predicted_total_quantity,
-          (item.daily_forecast || []).map(day => dateLabel(day.date) + ": " + nice(day.predicted_quantity)).join(" · ") || "—",
+          item.product_name || item.product_id, (item.selected_baseline || "—").replace(/_/g, " "), item.quantity_unit, item.predicted_total_quantity,
+          (item.daily_forecast || []).map(day => dateLabel(day.date) + ": " + nice(day.predicted_quantity)).join("\n") || "—",
           item.rolling_origin_mae, item.rolling_origin_rmse, item.rolling_origin_wape_percent, item.final_holdout_mae
         ]),
         "No forecasts available. Confirm continuous retail sales history of at least 49 days."
@@ -656,6 +675,7 @@
         '<form id="targetDaysForm" class="page-actions"><label class="field-label" for="targetDaysInput">Target days</label><input id="targetDaysInput" class="control-input" style="width:76px" type="number" min="1" max="365" value="' + esc(state.targetDays) + '"><button class="secondary-button" type="submit">Recalculate</button></form>'
       ) +
       '<div class="metric-line"><span>Analysis status</span><strong>' + badge(overstock.status || "insufficient_data") + '</strong></div>' +
+      '<div class="metric-line"><span>Report date (as of)</span><strong>' + esc(dateLabel(overstock.as_of_date || inv.as_of_date)) + '</strong></div>' +
       '<div class="metric-line"><span>Above / within / insufficient data / no demand signal</span><strong>' +
       esc(nice(overstock.summary?.above_target_count ?? "—")) + ' / ' +
       esc(nice(overstock.summary?.within_target_count ?? "—")) + ' / ' +
@@ -663,9 +683,9 @@
       esc(nice(overstock.summary?.insufficient_demand_signal_count ?? "—")) + '</strong></div>' +
       (overstock.error ? '<div class="form-message error-message">' + esc(overstock.error) + "</div>" : "") +
       table(
-        ["Status", "SKU", "Product", "On hand", "Unit", "Avg. daily sales (observed)", "Target stock", "Est. excess", "Days of supply", "Stock snapshot / age", "Review flags"],
+        ["Status", "SKU", "Product", "On hand", "Unit", "Avg. daily sales (observed)", "Target stock", "Est. excess", "Days of supply", "Stock snapshot / age at report date", "Review flags"],
         findings.map(row => [
-          row.status, row.source_product_code, row.product_name, row.inventory_quantity, row.quantity_unit,
+          (row.status || "—").replace(/_/g, " "), row.source_product_code, row.product_name, row.inventory_quantity, row.quantity_unit,
           row.average_daily_demand, row.target_stock_quantity, row.estimated_excess_quantity, row.days_of_supply,
           row.inventory_snapshot_date
             ? dateLabel(row.inventory_snapshot_date) + " / " + nice(row.inventory_snapshot_age_days) + " days old"
