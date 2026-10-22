@@ -15,6 +15,8 @@ from app.inventory.history import (
 ENGINE_VERSION = "1.0.0"
 MIN_HISTORY_DAYS = 28
 STALE_AFTER_DAYS = 30
+LOW_SALES_ACTIVITY_THRESHOLD = 0.2
+EXTREME_DAYS_OF_SUPPLY = 365
 
 
 def _date(value: Any) -> date | None:
@@ -216,8 +218,8 @@ def evaluate_overstock_review(
             "target_days_of_supply": target_days_of_supply,
             "minimum_sales_history_days": MIN_HISTORY_DAYS,
             "stale_snapshot_after_days": STALE_AFTER_DAYS,
-            "low_sales_activity_threshold_fraction": 0.2,
-            "extreme_days_of_supply_review_threshold": 365,
+            "low_sales_activity_threshold_fraction": LOW_SALES_ACTIVITY_THRESHOLD,
+            "extreme_days_of_supply_review_threshold": EXTREME_DAYS_OF_SUPPLY,
             "excess_rule": "max(0, confirmed on-hand quantity - average daily sales multiplied by caller-supplied target days of supply)",
         },
         "findings": [],
@@ -304,7 +306,7 @@ def evaluate_overstock_review(
             continue
         days_with_sales = sum(v > 0 for v in daily[key].values())
         review_flags: list[str] = []
-        if days and days_with_sales / days < 0.2:
+        if days and days_with_sales / days < LOW_SALES_ACTIVITY_THRESHOLD:
             review_flags.append(
                 f"Sparse observed sales: positive sales on {days_with_sales} of {days} history days; "
                 "the days-of-supply estimate may be unstable."
@@ -329,7 +331,7 @@ def evaluate_overstock_review(
         target = adu * float(target_days_of_supply)
         excess = max(0.0, float(stock["quantity"]) - target)
         days_of_supply = float(stock["quantity"]) / adu
-        if days_of_supply > 365:
+        if days_of_supply > EXTREME_DAYS_OF_SUPPLY:
             review_flags.append(
                 "Estimated days of supply exceeds one year; validate inventory and observed demand before interpreting it."
             )
