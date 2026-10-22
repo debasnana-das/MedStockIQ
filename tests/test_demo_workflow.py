@@ -131,7 +131,13 @@ def test_synthetic_uploads_run_through_profile_confirm_normalize_and_analysis(
     assert sales_run["quality_report"]["forecasting_baseline"]["status"] != "insufficient_data"
 
     inventory_analysis = inventory_run["quality_report"]["inventory_analysis"]
+    assert inventory_analysis["as_of_date"] == as_of.isoformat()
     assert inventory_analysis["summary"]["expiry_alert_count"] > 0
+    october_batch_alert = next(
+        alert for alert in inventory_analysis["expiry_alerts"]
+        if alert["batch_code"] == "B-005-0075"
+    )
+    assert october_batch_alert["alert_type"] == "expires_within_90_days"
     assert all(row["stock_basis"] == "physical"
                for row in inventory_run["previews"]["inventory_snapshots"])
 

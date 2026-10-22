@@ -17,4 +17,4 @@ def test_root_serves_local_dashboard_and_assets() -> None:
         assert stylesheet.status_code == 200
         assert "--forest" in stylesheet.text
         assert helper.status_code == 200
-        assert "month_end" in helper.text
+        assert "MM/YYYY" in helper.text
