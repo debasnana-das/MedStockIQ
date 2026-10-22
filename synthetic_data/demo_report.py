@@ -14,6 +14,8 @@ def _display(value: Any) -> str:
         return "—"
     if isinstance(value, bool):
         return "Yes" if value else "No"
+    if isinstance(value, int):
+        return f"{value:,}"
     if isinstance(value, float):
         rendered = f"{value:,.3f}".rstrip("0").rstrip(".")
         return rendered
