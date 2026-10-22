@@ -191,7 +191,18 @@ summary {{ cursor: pointer; font-weight: 700; }}
 .notes {{ padding-left: 20px; }}
 .notes li {{ margin: 8px 0; }}
 footer {{ color: var(--muted); text-align: center; font-size: 12px; padding: 22px 0 0; }}
-@media print {{ body {{ background: white; }} main {{ max-width: none; padding: 0; }} section, header, .kpi {{ break-inside: avoid; }} }}
+@page {{ size: A4 landscape; margin: 10mm; }}
+@media print {{
+  body {{ background: white; font-size: 10px; }}
+  main {{ max-width: none; padding: 0; }}
+  .table-wrap {{ overflow: visible; }}
+  table {{ width: 100%; table-layout: fixed; font-size: 8px; }}
+  th, td {{ padding: 4px 5px; white-space: normal; overflow-wrap: anywhere; }}
+  th {{ font-size: 8px; }}
+  section, header, .kpi {{ break-inside: avoid; box-shadow: none; }}
+  tr {{ break-inside: avoid; }}
+  details {{ display: none; }}
+}}
 </style>
 </head>
 <body>
