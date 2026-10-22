@@ -539,9 +539,12 @@
 
     const inventorySource = state.latestInventoryRun;
     const salesSource = state.latestSalesRun;
+    const inventorySnapshotDate = inventorySource?.options_summary?.snapshot_date
+      || state.latestInventory?.previews?.inventory_snapshots?.[0]?.snapshot_date
+      || inv.as_of_date;
     const inventorySourceLabel = inventorySource
       ? (inventorySource.source_file_name || inventorySource.document_type) + " · snapshot "
-        + dateLabel(inventorySource.options_summary?.snapshot_date || inv.as_of_date)
+        + dateLabel(inventorySnapshotDate)
       : "No saved inventory snapshot selected";
     const salesOptions = salesSource?.options_summary || {};
     const salesSourceLabel = salesSource
